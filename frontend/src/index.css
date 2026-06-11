@@ -1,0 +1,130 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --background: #F8FAFC;
+  --card: #FFFFFF;
+  --text: #0F172A;
+  --border: #E2E8F0;
+}
+
+.dark {
+  --background: #0B1220;
+  --card: #111827;
+  --text: #FFFFFF;
+  --border: #1F2937;
+}
+
+@theme {
+  --color-theme-bg: var(--background);
+  --color-theme-card: var(--card);
+  --color-theme-text: var(--text);
+  --color-theme-border: var(--border);
+}
+
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1), background-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  /* Premium Glassmorphism UI Panels */
+  .glass-panel {
+    @apply bg-theme-card border border-theme-border shadow-xl;
+  }
+
+  .glass-card {
+    @apply bg-theme-card/60 border border-theme-border hover:border-emerald-500/45 transition-all duration-300 ease-out shadow-lg;
+  }
+
+  .glass-card-active {
+    @apply bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/50 dark:border-emerald-500/30 transition-all duration-300 shadow-xl;
+  }
+
+  .glass-input {
+    @apply bg-theme-card border border-theme-border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none rounded-xl px-4 py-3 text-theme-text transition-all;
+  }
+
+  .glass-button {
+    @apply bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-medium px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2;
+  }
+
+  .glass-button-secondary {
+    @apply bg-theme-card hover:bg-theme-bg border border-theme-border active:scale-95 text-theme-text font-medium px-5 py-2.5 rounded-xl transition-all duration-200 shadow-sm flex items-center justify-center gap-2;
+  }
+
+  .glass-button-danger {
+    @apply bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-medium px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2;
+  }
+
+  /* Status Badges */
+  .badge-success {
+    @apply bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+  }
+
+  .badge-warning {
+    @apply bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+  }
+
+  .badge-danger {
+    @apply bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+  }
+
+  /* Flashing red alarm backdrop for theft weight sensor discrepancy */
+  .theft-alarm-active {
+    @apply relative overflow-hidden;
+  }
+
+  .theft-alarm-active::before {
+    content: '';
+    @apply absolute inset-0 bg-red-600/5 dark:bg-red-600/10 pointer-events-none animate-pulse z-0;
+  }
+
+  /* Shimmer background loading effect */
+  .skeleton-shimmer {
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    @apply animate-pulse rounded-lg;
+  }
+
+  .dark .skeleton-shimmer {
+    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background-size: 200% 100%;
+  }
+}
+
+/* Custom Scrollbar for modern dashboards */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-800 rounded-full hover:bg-slate-400 dark:hover:bg-slate-700;
+}
+
+/* Custom animation helper */
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(244, 63, 94, 0);
+  }
+}
+
+.animate-pulse-red {
+  animation: pulse-red 2s infinite;
+}
