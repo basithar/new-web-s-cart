@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { registerUser, loginUser, updateBudget, getUsers } from '../controllers/authController';
 import { getProducts, createProduct, updateProduct, deleteProduct, bulkImportProducts } from '../controllers/productController';
-import { getCart, updateItemQuantity, setCartBudget, startShoppingSession, stopShoppingSession, getAllCarts, resumeShoppingSession } from '../controllers/cartController';
+import { getCart, updateItemQuantity, setCartBudget, startShoppingSession, stopShoppingSession, getAllCarts, resumeShoppingSession, removeItemFromCart } from '../controllers/cartController';
 import { scanRfidCard, getScanHistory } from '../controllers/rfidController';
 import { postHeartbeat, getStatus } from '../controllers/esp32Controller';
 import { updatePhysicalWeight } from '../controllers/securityController';
@@ -34,6 +34,7 @@ router.get('/shopping-sessions', getAllCarts);
 
 // --- RFID Hardware / Scan Simulator Routes ---
 router.post('/rfid/scan', scanRfidCard);
+router.post('/cart/remove', removeItemFromCart);
 router.get('/rfid/history', getScanHistory);
 
 // --- ESP32 Telemetry Status Routes ---
@@ -42,6 +43,8 @@ router.get('/esp32/status', getStatus);
 
 // --- Payment & Transaction Checkout Routes ---
 router.post('/payment/process', processPayment);
+router.post('/checkout', processPayment);
+router.post('/weight/update', updatePhysicalWeight);
 router.get('/transactions', getTransactions);
 
 export default router;

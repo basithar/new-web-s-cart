@@ -90,6 +90,32 @@ const Admin: React.FC = () => {
     fetchData();
   }, [currentPath]);
 
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const { storage } = await import('../firebase');
+      if (!storage) {
+        throw new Error('Firebase Storage is not initialized.');
+      }
+      const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      
+      const fileRef = ref(storage, `products/${rfidUid || 'unnamed'}_${Date.now()}`);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+      setImage(url);
+      triggerLocalNotification('success', 'Image Uploaded', 'Product image saved to Firebase Storage.');
+    } catch (err: any) {
+      triggerLocalNotification('error', 'Upload Failed', err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -100,6 +126,7 @@ const Admin: React.FC = () => {
       weight: Number(weight),
       stock: Number(stockQuantity),
       category,
+      imageUrl: image,
     };
 
     try {
@@ -125,6 +152,7 @@ const Admin: React.FC = () => {
     setWeight(p.weight.toString());
     setCategory(p.category);
     setStockQuantity(p.stock !== undefined ? p.stock.toString() : '100');
+    setImage(p.imageUrl || '');
     // Switch to products page if not there
     if (currentPath !== '/admin/products') {
       navigate('/admin/products');
@@ -423,7 +451,7 @@ const Admin: React.FC = () => {
                       <tr key={p._id} className="hover:bg-slate-100/10">
                         <td className="py-3 flex items-center gap-3">
                           <img 
-                            src={getProductImage(p.category)} 
+                            src={p.imageUrl || getProductImage(p.category)} 
                             alt={p.name} 
                             className="w-8 h-8 rounded-lg object-cover bg-slate-100 border border-theme-border"
                           />
@@ -574,6 +602,33 @@ const Admin: React.FC = () => {
                       className="glass-input text-xs py-2 px-3"
                     />
                   </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-bold text-slate-400 tracking-wide uppercase">Product Image</label>
+                  {image && (
+                    <img 
+                      src={image} 
+                      alt="Product preview" 
+                      className="w-16 h-16 rounded-xl object-cover bg-slate-100 border border-theme-border mb-2"
+                    />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20"
+                    />
+                    {uploading && <span className="text-[10px] text-slate-450 animate-pulse">Uploading...</span>}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Or enter image URL manually..."
+                    value={image}
+                    onChange={(e) => setImage(e.target.value)}
+                    className="glass-input text-xs py-1.5 px-3 mt-2"
+                  />
                 </div>
 
                 <div className="flex gap-2 pt-2">

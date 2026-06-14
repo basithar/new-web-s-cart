@@ -241,3 +241,65 @@ export const getAllCarts = async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+export const removeItemFromCart = async (req: Request, res: Response) => {
+  try {
+    const { uid, cartId = 'CART_001' } = req.body;
+
+    if (!uid) {
+      return res.status(400).json({ error: 'Missing RFID UID parameter.' });
+    }
+
+    let cart = await dbService.getCart(cartId);
+    if (!cart) {
+      return res.status(404).json({ error: 'Cart session not found.' });
+    }
+
+    const product = await dbService.getProductByRfid(uid);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not registered in database catalog.' });
+    }
+
+    const productIdStr = product._id.toString();
+    const itemIndex = cart.items.findIndex(
+      (item: any) =>
+        (typeof item.product === 'object' && item.product._id.toString() === productIdStr) ||
+        (typeof item.product === 'string' && item.product === productIdStr)
+    );
+
+    if (itemIndex === -1) {
+      return res.status(404).json({ error: 'Item not found in shopping cart.' });
+    }
+
+    if (cart.items[itemIndex].quantity > 1) {
+      cart.items[itemIndex].quantity -= 1;
+    } else {
+      cart.items.splice(itemIndex, 1);
+    }
+
+    cart.expectedWeight = Math.max(0, cart.expectedWeight - product.weight);
+    cart.physicalWeight = Math.max(0, cart.physicalWeight - product.weight);
+    cart.totalAmount = Math.max(0, cart.totalAmount - product.price);
+
+    const savedCart = await dbService.saveCart({
+      cartId,
+      items: cart.items,
+      expectedWeight: cart.expectedWeight,
+      physicalWeight: cart.physicalWeight,
+      totalAmount: cart.totalAmount,
+      weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 50,
+    });
+
+    emitCartUpdate(cartId, savedCart);
+    emitNotification({
+      type: 'warning',
+      title: 'Item Removed',
+      message: `Removed from cart: ${product.name}`,
+    });
+
+    res.status(200).json({ success: true, cart: savedCart });
+  } catch (error: any) {
+    console.error('Remove item endpoint error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};

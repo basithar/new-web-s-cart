@@ -14,7 +14,7 @@ export const scanRfidCard = async (req: Request, res: Response) => {
     console.log(`📡 RFID Scan Request Received. UID: ${uid}`);
 
     // Register scan on the ESP32 connection state
-    esp32Service.registerScan(uid);
+    await esp32Service.registerScan(uid);
 
     // 1. Find or check Cart session status
     let cart = await dbService.getCart(cartId);

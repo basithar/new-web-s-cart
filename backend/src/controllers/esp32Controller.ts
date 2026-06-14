@@ -6,7 +6,7 @@ export const postHeartbeat = async (req: Request, res: Response) => {
     const { wifiStatus = 'Connected', rssi = -60, cartId, weight } = req.body;
     
     // Register heartbeat
-    esp32Service.updateHeartbeat(
+    await esp32Service.updateHeartbeat(
       wifiStatus, 
       Number(rssi), 
       cartId, 
@@ -21,7 +21,7 @@ export const postHeartbeat = async (req: Request, res: Response) => {
 
 export const getStatus = async (req: Request, res: Response) => {
   try {
-    const status = esp32Service.getStatus();
+    const status = await esp32Service.getStatus();
     res.status(200).json(status);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

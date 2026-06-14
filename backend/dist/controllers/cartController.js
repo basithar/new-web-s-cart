@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllCarts = exports.resumeShoppingSession = exports.stopShoppingSession = exports.startShoppingSession = exports.setCartBudget = exports.updateItemQuantity = exports.getCart = void 0;
+exports.removeItemFromCart = exports.getAllCarts = exports.resumeShoppingSession = exports.stopShoppingSession = exports.startShoppingSession = exports.setCartBudget = exports.updateItemQuantity = exports.getCart = void 0;
 const dbService_1 = require("../services/dbService");
 const socketService_1 = require("../services/socketService");
 const getCart = async (req, res) => {
@@ -214,3 +214,54 @@ const getAllCarts = async (req, res) => {
     }
 };
 exports.getAllCarts = getAllCarts;
+const removeItemFromCart = async (req, res) => {
+    try {
+        const { uid, cartId = 'CART_001' } = req.body;
+        if (!uid) {
+            return res.status(400).json({ error: 'Missing RFID UID parameter.' });
+        }
+        let cart = await dbService_1.dbService.getCart(cartId);
+        if (!cart) {
+            return res.status(404).json({ error: 'Cart session not found.' });
+        }
+        const product = await dbService_1.dbService.getProductByRfid(uid);
+        if (!product) {
+            return res.status(404).json({ error: 'Product not registered in database catalog.' });
+        }
+        const productIdStr = product._id.toString();
+        const itemIndex = cart.items.findIndex((item) => (typeof item.product === 'object' && item.product._id.toString() === productIdStr) ||
+            (typeof item.product === 'string' && item.product === productIdStr));
+        if (itemIndex === -1) {
+            return res.status(404).json({ error: 'Item not found in shopping cart.' });
+        }
+        if (cart.items[itemIndex].quantity > 1) {
+            cart.items[itemIndex].quantity -= 1;
+        }
+        else {
+            cart.items.splice(itemIndex, 1);
+        }
+        cart.expectedWeight = Math.max(0, cart.expectedWeight - product.weight);
+        cart.physicalWeight = Math.max(0, cart.physicalWeight - product.weight);
+        cart.totalAmount = Math.max(0, cart.totalAmount - product.price);
+        const savedCart = await dbService_1.dbService.saveCart({
+            cartId,
+            items: cart.items,
+            expectedWeight: cart.expectedWeight,
+            physicalWeight: cart.physicalWeight,
+            totalAmount: cart.totalAmount,
+            weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 50,
+        });
+        (0, socketService_1.emitCartUpdate)(cartId, savedCart);
+        (0, socketService_1.emitNotification)({
+            type: 'warning',
+            title: 'Item Removed',
+            message: `Removed from cart: ${product.name}`,
+        });
+        res.status(200).json({ success: true, cart: savedCart });
+    }
+    catch (error) {
+        console.error('Remove item endpoint error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+exports.removeItemFromCart = removeItemFromCart;

@@ -1,7 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
-// Add environment variables check to see if Firebase is configured
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -9,9 +10,9 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Simple check if user has filled in credentials
 export const isFirebaseConfigured = !!(
   firebaseConfig.apiKey &&
   firebaseConfig.apiKey !== 'YOUR_API_KEY' &&
@@ -20,14 +21,18 @@ export const isFirebaseConfigured = !!(
 
 let app;
 let auth: any = null;
+let db: any = null;
+let storage: any = null;
 
-if (isFirebaseConfigured) {
-  try {
-    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-  } catch (err) {
-    console.error('Firebase initialization failed, falling back to mock auth:', err);
-  }
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
+  console.log('✨ Firebase Services initialized successfully.');
+} catch (err) {
+  console.error('❌ Firebase initialization failed:', err);
 }
 
-export { auth };
+export { auth, db, storage };
+export default app;

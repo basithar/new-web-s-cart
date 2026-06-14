@@ -1,27 +1,18 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { db } from './firebase';
 
 export let isInMemoryFallback = false;
 
 export const connectDB = async (): Promise<boolean> => {
-  const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/smartcart';
-  
-  console.log('Connecting to database...');
-  
   try {
-    // Set connection timeout to 4 seconds so it falls back quickly if MongoDB isn't running
-    await mongoose.connect(mongoURI, {
-      serverSelectionTimeoutMS: 4000,
-    });
-    console.log('✨ MongoDB Connected successfully!');
+    if (!db) {
+      throw new Error('Firestore DB instance is not initialized.');
+    }
+    console.log('✨ Firebase Firestore connection verified successfully!');
     isInMemoryFallback = false;
     return true;
   } catch (error: any) {
-    console.warn('⚠️ MongoDB connection failed. Reason:', error.message);
-    console.warn('🚀 Falling back to fully-functional IN-MEMORY DATABASE for demonstration!');
-    isInMemoryFallback = true;
+    console.error('❌ Firebase Firestore verification failed:', error.message);
+    isInMemoryFallback = false;
     return false;
   }
 };

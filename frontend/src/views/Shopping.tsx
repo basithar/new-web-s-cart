@@ -309,7 +309,7 @@ const Shopping: React.FC = () => {
                         <tr key={prod._id} className="hover:bg-slate-100/20 dark:hover:bg-slate-900/10">
                           <td className="py-3 flex items-center gap-3.5">
                             <img 
-                              src={getProductImage(prod.category)} 
+                              src={prod.imageUrl || getProductImage(prod.category)} 
                               alt={prod.name} 
                               className="w-10 h-10 rounded-xl object-cover bg-slate-100 border border-theme-border shrink-0"
                             />
@@ -452,7 +452,7 @@ const Shopping: React.FC = () => {
                 >
                   <div className="flex items-center gap-2 min-w-0 mr-1.5">
                     <img
-                      src={getProductImage(p.category)}
+                      src={p.imageUrl || getProductImage(p.category)}
                       alt={p.name}
                       className="w-8 h-8 rounded-lg object-cover bg-slate-100 border border-theme-border shrink-0"
                     />

@@ -31,11 +31,14 @@ router.post('/cart/resume', cartController_1.resumeShoppingSession);
 router.get('/shopping-sessions', cartController_1.getAllCarts);
 // --- RFID Hardware / Scan Simulator Routes ---
 router.post('/rfid/scan', rfidController_1.scanRfidCard);
+router.post('/cart/remove', cartController_1.removeItemFromCart);
 router.get('/rfid/history', rfidController_1.getScanHistory);
 // --- ESP32 Telemetry Status Routes ---
 router.post('/esp32/heartbeat', esp32Controller_1.postHeartbeat);
 router.get('/esp32/status', esp32Controller_1.getStatus);
 // --- Payment & Transaction Checkout Routes ---
 router.post('/payment/process', paymentController_1.processPayment);
+router.post('/checkout', paymentController_1.processPayment);
+router.post('/weight/update', securityController_1.updatePhysicalWeight);
 router.get('/transactions', paymentController_1.getTransactions);
 exports.default = router;

@@ -14,12 +14,10 @@ const processPayment = async (req, res) => {
         if (!cart || cart.items.length === 0) {
             return res.status(400).json({ error: 'Active shopping cart is empty.' });
         }
-        // Verify session state and weight alignment
-        if (cart.status !== 'stopped') {
-            return res.status(400).json({ error: 'Shopping session must be stopped and verified before payment.' });
-        }
-        if (cart.weightMismatch) {
-            return res.status(400).json({ error: 'Weight mismatch detected. Please rescan or remove unscanned items.' });
+        // Verify weight alignment
+        const weightDifference = Math.abs(cart.expectedWeight - cart.physicalWeight);
+        if (weightDifference > 50 || cart.weightMismatch) {
+            return res.status(400).json({ error: 'Weight mismatch detected. Please scan or remove missing items.' });
         }
         // 2. Map transaction items & deduct catalog stock quantities
         const purchaseItems = [];
@@ -36,7 +34,7 @@ const processPayment = async (req, res) => {
         const totalPaid = cart.totalAmount;
         const totalWeight = cart.physicalWeight;
         const finalTxId = transactionId || `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`;
-        const finalOrderNumber = orderNumber || `ORD-2026-${Math.floor(100 + Math.random() * 900)}`;
+        const finalOrderNumber = orderNumber || `ORD-2026-${Math.floor(100000 + Math.random() * 900000)}`;
         const finalPaymentMethod = paymentMethod || 'Credit Card';
         const finalPaymentStatus = paymentStatus || 'Success';
         // 3. Create Transaction in Database
@@ -52,17 +50,32 @@ const processPayment = async (req, res) => {
             totalWeight,
             paymentStatus: finalPaymentStatus,
         });
-        // 4. Mark Kiosk Session as Completed (rather than resetting immediately so it logs in session history)
-        const completedCart = await dbService_1.dbService.saveCart({
+        // 4. Create historic Shopping Session Record
+        await dbService_1.dbService.createShoppingSession({
             cartId,
+            items: purchaseItems,
+            budget: cart.budget,
+            totalAmount: totalPaid,
+            expectedWeight: cart.expectedWeight,
+            physicalWeight: cart.physicalWeight,
+        });
+        // 5. Clear and reset active cart session
+        const clearedCart = await dbService_1.dbService.saveCart({
+            cartId,
+            items: [],
+            budget: 0,
+            totalAmount: 0,
+            expectedWeight: 0,
+            physicalWeight: 0,
+            weightMismatch: false,
             status: 'completed',
         });
-        // 5. Emit status update to clients
-        (0, socketService_1.emitCartUpdate)(cartId, completedCart);
+        // 6. Emit status update to clients
+        (0, socketService_1.emitCartUpdate)(cartId, clearedCart);
         (0, socketService_1.emitNotification)({
             type: 'success',
             title: 'Checkout Success',
-            message: `Order ${transactionId} processed successfully!`,
+            message: `Order ${finalTxId} processed successfully!`,
         });
         // 6. Return response
         res.status(200).json({

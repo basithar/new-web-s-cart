@@ -1,16 +1,18 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
+
 export interface ESP32Status {
   connected: boolean;
   wifiStatus: 'Connected' | 'Disconnected';
-  rssi: number; // Signal strength in dBm
+  rssi: number;
   lastRfidUid: string;
   lastScanTime: string;
   lastWeightReading: number;
   currentShoppingSession: string;
-  lastActive: Date | null;
+  lastActive: string | null;
 }
 
-// In-memory telemetry cache
-let currentStatus: ESP32Status = {
+const defaultStatus: ESP32Status = {
   connected: false,
   wifiStatus: 'Disconnected',
   rssi: -100,
@@ -22,40 +24,79 @@ let currentStatus: ESP32Status = {
 };
 
 export const esp32Service = {
-  getStatus: (): ESP32Status => {
-    // If we haven't received a heartbeat or scan in 15 seconds, declare offline
-    if (currentStatus.lastActive) {
-      const now = new Date();
-      const diffSeconds = (now.getTime() - currentStatus.lastActive.getTime()) / 1000;
-      if (diffSeconds > 15) {
-        currentStatus.connected = false;
-        currentStatus.wifiStatus = 'Disconnected';
-        currentStatus.rssi = -100;
+  getStatus: async (): Promise<ESP32Status> => {
+    try {
+      const docRef = doc(db, 'esp32Status', 'status');
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        await setDoc(docRef, defaultStatus);
+        return defaultStatus;
       }
+      const data = docSnap.data() as ESP32Status;
+      
+      if (data.lastActive) {
+        const lastActiveTime = new Date(data.lastActive).getTime();
+        const diffSeconds = (Date.now() - lastActiveTime) / 1000;
+        if (diffSeconds > 15) {
+          const updated = {
+            ...data,
+            connected: false,
+            wifiStatus: 'Disconnected' as const,
+            rssi: -100
+          };
+          await setDoc(docRef, updated, { merge: true });
+          return updated;
+        }
+      }
+      return data;
+    } catch (err) {
+      console.error('Failed to get ESP32 status from Firestore:', err);
+      return defaultStatus;
     }
-    return currentStatus;
   },
 
-  updateHeartbeat: (wifiStatus: string, rssi: number, cartId?: string, weight?: number) => {
-    currentStatus.connected = true;
-    currentStatus.wifiStatus = wifiStatus === 'Connected' ? 'Connected' : 'Disconnected';
-    currentStatus.rssi = rssi;
-    currentStatus.lastActive = new Date();
-    if (cartId) currentStatus.currentShoppingSession = cartId;
-    if (weight !== undefined) currentStatus.lastWeightReading = weight;
+  updateHeartbeat: async (wifiStatus: string, rssi: number, cartId?: string, weight?: number) => {
+    try {
+      const docRef = doc(db, 'esp32Status', 'status');
+      const updateData: any = {
+        connected: true,
+        wifiStatus: wifiStatus === 'Connected' ? 'Connected' : 'Disconnected',
+        rssi,
+        lastActive: new Date().toISOString(),
+      };
+      if (cartId) updateData.currentShoppingSession = cartId;
+      if (weight !== undefined) updateData.lastWeightReading = weight;
+      await setDoc(docRef, updateData, { merge: true });
+    } catch (err) {
+      console.error('Failed to update ESP32 heartbeat in Firestore:', err);
+    }
   },
 
-  registerScan: (uid: string) => {
-    currentStatus.connected = true;
-    currentStatus.lastActive = new Date();
-    currentStatus.lastRfidUid = uid;
-    currentStatus.lastScanTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  registerScan: async (uid: string) => {
+    try {
+      const docRef = doc(db, 'esp32Status', 'status');
+      await setDoc(docRef, {
+        connected: true,
+        lastActive: new Date().toISOString(),
+        lastRfidUid: uid,
+        lastScanTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      }, { merge: true });
+    } catch (err) {
+      console.error('Failed to register scan in Firestore:', err);
+    }
   },
 
-  registerWeight: (cartId: string, weight: number) => {
-    currentStatus.connected = true;
-    currentStatus.lastActive = new Date();
-    currentStatus.lastWeightReading = weight;
-    currentStatus.currentShoppingSession = cartId;
+  registerWeight: async (cartId: string, weight: number) => {
+    try {
+      const docRef = doc(db, 'esp32Status', 'status');
+      await setDoc(docRef, {
+        connected: true,
+        lastActive: new Date().toISOString(),
+        lastWeightReading: weight,
+        currentShoppingSession: cartId,
+      }, { merge: true });
+    } catch (err) {
+      console.error('Failed to register weight in Firestore:', err);
+    }
   },
 };

@@ -5,13 +5,14 @@ const theftService_1 = require("../services/theftService");
 const esp32Service_1 = require("../services/esp32Service");
 const updatePhysicalWeight = async (req, res) => {
     try {
-        const { cartId, physicalWeight } = req.body;
-        if (!cartId || physicalWeight === undefined) {
-            return res.status(400).json({ error: 'Missing cartId or physicalWeight.' });
+        const { cartId, physicalWeight, weight } = req.body;
+        const finalWeight = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : undefined);
+        if (!cartId || finalWeight === undefined) {
+            return res.status(400).json({ error: 'Missing cartId or physicalWeight/weight.' });
         }
         // Register weight with the ESP32 connection service
-        esp32Service_1.esp32Service.registerWeight(cartId, Number(physicalWeight));
-        const updatedCart = await theftService_1.theftService.checkWeightDiscrepancy(cartId, Number(physicalWeight));
+        await esp32Service_1.esp32Service.registerWeight(cartId, finalWeight);
+        const updatedCart = await theftService_1.theftService.checkWeightDiscrepancy(cartId, finalWeight);
         res.status(200).json(updatedCart);
     }
     catch (error) {

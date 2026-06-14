@@ -1,11 +1,10 @@
-import { ICart } from '../models/Cart';
 import { dbService } from './dbService';
 import { emitCartUpdate, emitNotification } from './socketService';
 
 const WEIGHT_THRESHOLD_GRAMS = 50; // allow ±50g tolerance (packaging variation)
 
 export const theftService = {
-  checkWeightDiscrepancy: async (cartId: string, physicalWeight: number): Promise<ICart> => {
+  checkWeightDiscrepancy: async (cartId: string, physicalWeight: number): Promise<any> => {
     // 1. Fetch active cart
     const cart = await dbService.getCart(cartId);
     if (!cart) {
