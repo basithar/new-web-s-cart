@@ -63,7 +63,7 @@ const scanRfidCard = async (req, res) => {
             expectedWeight: cart.expectedWeight,
             physicalWeight: cart.physicalWeight,
             totalAmount: cart.totalAmount,
-            weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 50,
+            weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 25,
         });
         // 6. Broadcast live updates and notifications
         (0, socketService_1.emitCartUpdate)(cartId, savedCart);

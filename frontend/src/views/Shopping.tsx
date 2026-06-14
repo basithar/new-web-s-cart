@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
-  ShoppingBag, Trash2, Plus, Minus, Scale, Wallet, 
+  ShoppingBag, Trash2, Plus, Minus, Scale, Wallet, CreditCard,
   ArrowRight, Radio, Search, Lock, Play, Square, CheckCircle, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useSocket } from '../context/SocketContext';
 
 import { API_URL } from '../config';
 
@@ -38,6 +39,36 @@ const Shopping: React.FC = () => {
     cart, loading, updateItemQuantity, simulateScan, simulateWeightUpdate,
     startShopping, stopShopping, resumeShopping
   } = useCart();
+
+  const { socket } = useSocket();
+  const [checkoutStatus, setCheckoutStatus] = useState<string>('');
+
+  useEffect(() => {
+    if (cart) {
+      if (cart.status === 'ready_for_payment') {
+        setCheckoutStatus('ready_for_payment');
+      } else if (cart.status === 'weight_mismatch' || cart.weightMismatch) {
+        setCheckoutStatus('weight_mismatch');
+      } else {
+        setCheckoutStatus('');
+      }
+    }
+  }, [cart]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleCheckoutStatus = (data: { success: boolean; status: string }) => {
+      console.log('⚡ Received checkout_status via Socket.IO:', data);
+      setCheckoutStatus(data.status);
+    };
+
+    socket.on('checkout_status', handleCheckoutStatus);
+
+    return () => {
+      socket.off('checkout_status', handleCheckoutStatus);
+    };
+  }, [socket]);
 
   const [products, setProducts] = useState<any[]>([]);
   const [manualRfid, setManualRfid] = useState('');
@@ -100,7 +131,7 @@ const Shopping: React.FC = () => {
   }
 
   // Welcome/Start Session layout when cart is null, pending, or completed
-  if (!cart || (cart.status !== 'active' && cart.status !== 'stopped')) {
+  if (!cart || (cart.status !== 'active' && cart.status !== 'stopped' && cart.status !== 'ready_for_payment' && cart.status !== 'weight_mismatch')) {
     return (
       <div className="max-w-md mx-auto text-center space-y-6 pt-12 text-theme-text transition-colors duration-300">
         <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto shadow-md">
@@ -127,7 +158,7 @@ const Shopping: React.FC = () => {
   const budget = cart.budget || 0;
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
-  const isStopped = cart.status === 'stopped';
+  const isStopped = cart.status === 'stopped' || cart.status === 'ready_for_payment' || cart.status === 'weight_mismatch';
 
   const filteredCatalog = products.filter((p) =>
     p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
@@ -136,6 +167,14 @@ const Shopping: React.FC = () => {
 
   return (
     <div className="space-y-6 text-theme-text transition-colors duration-300">
+      
+      {/* Dynamic Weight Mismatch Warning Banner */}
+      {checkoutStatus === 'weight_mismatch' && (
+        <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-pulse">
+          <AlertTriangle className="w-6 h-6 text-rose-500 shrink-0" />
+          <span>Weight Mismatch: There are unscanned items in your cart. Please scan them again!</span>
+        </div>
+      )}
       
       {/* 1. Shopping Session Banner (Telemetry Notifications) */}
       <div className={`p-5 rounded-3xl border transition-all ${
@@ -364,14 +403,30 @@ const Shopping: React.FC = () => {
               </div>
             )}
 
-            {/* Check out Trigger */}
-            {items.length > 0 && isStopped && !cart.weightMismatch && (
-              <div className="mt-6 flex justify-end">
+            {/* Mobile Payment Gateway / Checkout Trigger */}
+            {items.length > 0 && isStopped && (
+              <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 p-5 rounded-3xl bg-slate-50 dark:bg-slate-900 border border-theme-border">
+                {checkoutStatus === 'ready_for_payment' ? (
+                  <div className="text-left space-y-0.5">
+                    <p className="text-xs text-slate-400">Total Price: <strong className="text-theme-text text-sm">Rs. {total.toLocaleString()}</strong></p>
+                    <p className="text-xs text-slate-400">Total Weight: <strong className="text-theme-text text-sm">{cart.physicalWeight}g</strong></p>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 font-semibold italic">
+                    Weight verification required to unlock payment gateway.
+                  </div>
+                )}
+                
                 <button
+                  disabled={checkoutStatus === 'weight_mismatch' || cart.weightMismatch}
                   onClick={() => navigate('/checkout')}
-                  className="glass-button font-bold text-xs bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/10 flex items-center gap-1"
+                  className={`w-full sm:w-auto px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all shadow-md ${
+                    checkoutStatus === 'weight_mismatch' || cart.weightMismatch
+                      ? 'bg-rose-500/20 text-rose-450 border border-rose-500/25 cursor-not-allowed opacity-60' 
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white shadow-emerald-500/20 active:scale-95'
+                  }`}
                 >
-                  Proceed to Checkout <ArrowRight className="w-4 h-4" />
+                  <CreditCard className="w-4 h-4" /> Mobile Payment Gateway <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.emitNotification = exports.emitInventoryUpdate = exports.emitSecurityAlert = exports.emitCartUpdate = exports.getIO = exports.initSocket = void 0;
+exports.emitNotification = exports.emitInventoryUpdate = exports.emitSecurityAlert = exports.emitCheckoutStatus = exports.emitCartUpdate = exports.getIO = exports.initSocket = void 0;
 const socket_io_1 = require("socket.io");
 let io = null;
 const initSocket = (server) => {
@@ -42,6 +42,13 @@ const emitCartUpdate = (cartId, cartData) => {
     }
 };
 exports.emitCartUpdate = emitCartUpdate;
+const emitCheckoutStatus = (cartId, statusData) => {
+    if (io) {
+        io.to(cartId).emit('checkout_status', statusData);
+        io.emit('checkout_status', statusData); // Emit globally for visibility
+    }
+};
+exports.emitCheckoutStatus = emitCheckoutStatus;
 const emitSecurityAlert = (alertData) => {
     if (io) {
         io.emit('security_alert', alertData);

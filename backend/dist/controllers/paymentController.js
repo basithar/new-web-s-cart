@@ -16,7 +16,7 @@ const processPayment = async (req, res) => {
         }
         // Verify weight alignment
         const weightDifference = Math.abs(cart.expectedWeight - cart.physicalWeight);
-        if (weightDifference > 50 || cart.weightMismatch) {
+        if (weightDifference > 25 || cart.weightMismatch) {
             return res.status(400).json({ error: 'Weight mismatch detected. Please scan or remove missing items.' });
         }
         // 2. Map transaction items & deduct catalog stock quantities

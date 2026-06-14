@@ -23,7 +23,7 @@ export interface CartData {
   expectedWeight: number;
   physicalWeight: number;
   weightMismatch: boolean;
-  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed';
+  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed' | 'ready_for_payment' | 'weight_mismatch';
 }
 
 export interface ESP32Status {

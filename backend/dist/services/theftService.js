@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.theftService = void 0;
 const dbService_1 = require("./dbService");
 const socketService_1 = require("./socketService");
-const WEIGHT_THRESHOLD_GRAMS = 50; // allow ±50g tolerance (packaging variation)
+const WEIGHT_THRESHOLD_GRAMS = 25; // allow ±25g tolerance (packaging variation)
 exports.theftService = {
     checkWeightDiscrepancy: async (cartId, physicalWeight) => {
         // 1. Fetch active cart

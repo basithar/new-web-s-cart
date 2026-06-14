@@ -61,7 +61,7 @@ const updateItemQuantity = async (req, res) => {
                 totalAmount += prod.price * item.quantity;
             }
         });
-        const isMismatch = Math.abs(expectedWeight - cart.physicalWeight) > 50;
+        const isMismatch = Math.abs(expectedWeight - cart.physicalWeight) > 25;
         const updatedCart = await dbService_1.dbService.saveCart({
             cartId,
             items: cart.items,
@@ -148,23 +148,26 @@ const stopShoppingSession = async (req, res) => {
             }
         }
         const weightDifference = Math.abs(expectedWeight - Number(physicalWeight));
-        const weightMismatch = weightDifference > 50; // allow ±50g tolerance
-        // 2. Save session status stopped and save final verified weights
+        const isValid = weightDifference <= 25; // allow ±25g tolerance
+        const statusStr = isValid ? 'ready_for_payment' : 'weight_mismatch';
+        // 2. Save session status and save final verified weights
         const updatedCart = await dbService_1.dbService.saveCart({
             cartId,
             expectedWeight,
             physicalWeight: Number(physicalWeight),
             totalAmount,
-            weightMismatch,
-            status: 'stopped',
+            weightMismatch: !isValid,
+            status: statusStr,
         });
         (0, socketService_1.emitCartUpdate)(cartId, updatedCart);
-        if (weightMismatch) {
+        (0, socketService_1.emitCheckoutStatus)(cartId, { success: isValid, status: statusStr });
+        if (!isValid) {
             (0, socketService_1.emitNotification)({
                 type: 'error',
                 title: 'Weight Mismatch Flagged',
                 message: `Mismatch detected! Kiosk reads ${physicalWeight}g, but database expected ${expectedWeight}g. Please rescan or remove unscanned items.`,
             });
+            return res.status(200).json({ success: false, status: 'weight_mismatch' });
         }
         else {
             (0, socketService_1.emitNotification)({
@@ -172,8 +175,8 @@ const stopShoppingSession = async (req, res) => {
                 title: 'Weight Verified',
                 message: `Cart weight verified successfully at ${physicalWeight}g.`,
             });
+            return res.status(200).json({ success: true, status: 'ready_for_payment' });
         }
-        res.status(200).json({ success: true, cart: updatedCart });
     }
     catch (error) {
         res.status(500).json({ error: error.message });
@@ -249,7 +252,7 @@ const removeItemFromCart = async (req, res) => {
             expectedWeight: cart.expectedWeight,
             physicalWeight: cart.physicalWeight,
             totalAmount: cart.totalAmount,
-            weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 50,
+            weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 25,
         });
         (0, socketService_1.emitCartUpdate)(cartId, savedCart);
         (0, socketService_1.emitNotification)({

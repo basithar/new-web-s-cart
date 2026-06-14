@@ -1,7 +1,7 @@
 import { dbService } from './dbService';
 import { emitCartUpdate, emitNotification } from './socketService';
 
-const WEIGHT_THRESHOLD_GRAMS = 50; // allow ±50g tolerance (packaging variation)
+const WEIGHT_THRESHOLD_GRAMS = 25; // allow ±25g tolerance (packaging variation)
 
 export const theftService = {
   checkWeightDiscrepancy: async (cartId: string, physicalWeight: number): Promise<any> => {

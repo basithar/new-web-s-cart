@@ -47,6 +47,13 @@ export const emitCartUpdate = (cartId: string, cartData: any) => {
   }
 };
 
+export const emitCheckoutStatus = (cartId: string, statusData: any) => {
+  if (io) {
+    io.to(cartId).emit('checkout_status', statusData);
+    io.emit('checkout_status', statusData); // Emit globally for visibility
+  }
+};
+
 export const emitSecurityAlert = (alertData: any) => {
   if (io) {
     io.emit('security_alert', alertData);
