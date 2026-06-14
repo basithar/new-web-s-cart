@@ -13,7 +13,7 @@ const runSeed = async () => {
         await (0, dbService_1.seedMongoDatabase)();
     }
     else {
-        console.log('Skipping MongoDB seeding (in-memory mode is auto-seeded at runtime).');
+        console.error('Skipping MongoDB seeding: database connection failed.');
     }
     await mongoose_1.default.disconnect();
     console.log('Seeding process finished.');

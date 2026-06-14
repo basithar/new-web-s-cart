@@ -16,7 +16,8 @@ router.post('/auth/budget', authController_1.updateBudget);
 router.get('/users', authController_1.getUsers);
 // --- Product/Inventory Catalog Routes ---
 router.get('/products', productController_1.getProducts);
-router.post('/products', productController_1.createOrUpdateProduct);
+router.post('/products', productController_1.createProduct);
+router.put('/products/:id', productController_1.updateProduct);
 router.post('/products/bulk', productController_1.bulkImportProducts);
 router.delete('/products/:id', productController_1.deleteProduct);
 // --- Cart Routes ---

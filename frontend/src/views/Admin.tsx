@@ -11,6 +11,29 @@ import { useSocket } from '../context/SocketContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+const getProductImage = (category: string): string => {
+  const mapping: { [key: string]: string } = {
+    'Rice': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=80',
+    'Milk Powder': 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=300&auto=format&fit=crop&q=80',
+    'Biscuits': 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300&auto=format&fit=crop&q=80',
+    'Snacks': 'https://images.unsplash.com/photo-1599490659283-4462babb6c31?w=300&auto=format&fit=crop&q=80',
+    'Personal Care': 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&auto=format&fit=crop&q=80',
+    'Soap': 'https://images.unsplash.com/photo-1607006342411-9a3363d63b36?w=300&auto=format&fit=crop&q=80',
+    'Toothpaste': 'https://images.unsplash.com/photo-1559599189-fe84dea4eb79?w=300&auto=format&fit=crop&q=80',
+    'Tea': 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80',
+    'Coffee': 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=300&auto=format&fit=crop&q=80',
+    'Margarine': 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=300&auto=format&fit=crop&q=80',
+    'Sauce': 'https://images.unsplash.com/photo-1607305387299-a3d9611cd46f?w=300&auto=format&fit=crop&q=80',
+    'Instant Food': 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=300&auto=format&fit=crop&q=80',
+    'Beverages': 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&auto=format&fit=crop&q=80',
+    'Dairy': 'https://images.unsplash.com/photo-1528750955906-79c2409f3e7e?w=300&auto=format&fit=crop&q=80',
+    'Chocolate': 'https://images.unsplash.com/photo-1511381939415-e44015466834?w=300&auto=format&fit=crop&q=80',
+    'Ice Cream': 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=300&auto=format&fit=crop&q=80',
+    'Detergent': 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=300&auto=format&fit=crop&q=80',
+  };
+  return mapping[category] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300';
+};
+
 const Admin: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -71,20 +94,22 @@ const Admin: React.FC = () => {
     e.preventDefault();
     
     const prodData = {
-      _id: editId || undefined,
-      rfidUid: rfidUid.trim(),
-      productName: productName.trim(),
+      uid: rfidUid.trim(),
+      name: productName.trim(),
       price: Number(price),
       weight: Number(weight),
-      expiryDate,
+      stock: Number(stockQuantity),
       category,
-      image: image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
-      stockQuantity: Number(stockQuantity),
     };
 
     try {
-      await axios.post(`${API_URL}/products`, prodData);
-      triggerLocalNotification('success', 'Catalog Modified', `Product "${productName}" saved.`);
+      if (editId) {
+        await axios.put(`${API_URL}/products/${editId}`, prodData);
+        triggerLocalNotification('success', 'Catalog Modified', `Product "${productName}" updated.`);
+      } else {
+        await axios.post(`${API_URL}/products`, prodData);
+        triggerLocalNotification('success', 'Catalog Modified', `Product "${productName}" registered.`);
+      }
       handleReset();
       await fetchData();
     } catch (err: any) {
@@ -94,14 +119,12 @@ const Admin: React.FC = () => {
 
   const handleEdit = (p: any) => {
     setEditId(p._id);
-    setRfidUid(p.rfidUid);
-    setProductName(p.productName);
+    setRfidUid(p.uid);
+    setProductName(p.name);
     setPrice(p.price.toString());
     setWeight(p.weight.toString());
-    setExpiryDate(p.expiryDate);
     setCategory(p.category);
-    setImage(p.image);
-    setStockQuantity(p.stockQuantity !== undefined ? p.stockQuantity.toString() : '10');
+    setStockQuantity(p.stock !== undefined ? p.stock.toString() : '100');
     // Switch to products page if not there
     if (currentPath !== '/admin/products') {
       navigate('/admin/products');
@@ -136,13 +159,12 @@ const Admin: React.FC = () => {
         const cols = line.split(',');
         if (cols.length >= 3) {
           jsonProducts.push({
-            rfidUid: cols[0]?.trim(),
-            productName: cols[1]?.trim(),
+            uid: cols[0]?.trim(),
+            name: cols[1]?.trim(),
             price: Number(cols[2]?.trim()) || 100,
             weight: Number(cols[3]?.trim()) || 500,
-            expiryDate: cols[4]?.trim() || '2026-12-31',
+            stock: Number(cols[4]?.trim()) || 100,
             category: cols[5]?.trim() || 'General',
-            image: cols[6]?.trim() || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
           });
         }
       }
@@ -168,7 +190,7 @@ const Admin: React.FC = () => {
     setExpiryDate('2026-12-31');
     setCategory('Dairy');
     setImage('');
-    setStockQuantity('10');
+    setStockQuantity('100');
   };
 
   const generateMockRfid = () => {
@@ -179,8 +201,8 @@ const Admin: React.FC = () => {
   // Filter products for CRUD tab
   const filteredProducts = products.filter(
     (p) =>
-      p.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.rfidUid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.uid.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -336,13 +358,13 @@ const Admin: React.FC = () => {
               <div>
                 <h4 className="font-extrabold text-sm text-theme-text">CSV Product Bulk Import</h4>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Format: rfidUid, productName, price, weight, expiryDate, category, image
+                  Format: uid, name, price, weight, stock, category
                 </p>
               </div>
 
               <textarea
                 rows={5}
-                placeholder={`rfidUid,productName,price,weight,expiryDate,category,image\nRFID004,Tomato Soup,120,300,2026-10-15,Canned,https://images.unsplash.com/photo-1547592180-85f173990554?w=300`}
+                placeholder={`uid,name,price,weight,stock,category\nRFID004,Tomato Soup,120,300,100,Canned`}
                 value={csvText}
                 onChange={(e) => setCsvText(e.target.value)}
                 className="w-full p-4 rounded-2xl bg-theme-bg border border-theme-border font-mono text-[11px] text-theme-text focus:outline-none"
@@ -401,16 +423,16 @@ const Admin: React.FC = () => {
                       <tr key={p._id} className="hover:bg-slate-100/10">
                         <td className="py-3 flex items-center gap-3">
                           <img 
-                            src={p.image} 
-                            alt={p.productName} 
+                            src={getProductImage(p.category)} 
+                            alt={p.name} 
                             className="w-8 h-8 rounded-lg object-cover bg-slate-100 border border-theme-border"
                           />
                           <div>
-                            <span className="font-bold text-theme-text">{p.productName}</span>
+                            <span className="font-bold text-theme-text">{p.name}</span>
                             <span className="block text-[9px] text-slate-400 font-medium uppercase mt-0.5">{p.category}</span>
                           </div>
                         </td>
-                        <td className="py-3 font-mono font-semibold text-emerald-500">{p.rfidUid}</td>
+                        <td className="py-3 font-mono font-semibold text-emerald-500">{p.uid}</td>
                         <td className="py-3 text-center font-bold text-slate-500">{p.weight}g</td>
                         <td className="py-3 text-right font-extrabold text-theme-text">Rs. {p.price}</td>
                         <td className="py-3 text-right space-x-1">
@@ -514,54 +536,44 @@ const Admin: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[9px] font-bold text-slate-400 tracking-wide">Expiry Date</label>
-                    <input
-                      type="date"
-                      required
-                      value={expiryDate}
-                      onChange={(e) => setExpiryDate(e.target.value)}
-                      className="glass-input text-xs py-2 px-3"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
                     <label className="text-[9px] font-bold text-slate-400 tracking-wide">Category</label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
                       className="glass-input text-xs py-2 px-3 h-[38px] bg-theme-card"
                     >
-                      <option value="Dairy">Dairy</option>
-                      <option value="Bakery">Bakery</option>
-                      <option value="Grains">Grains</option>
+                      <option value="Rice">Rice</option>
+                      <option value="Milk Powder">Milk Powder</option>
+                      <option value="Soap">Soap</option>
+                      <option value="Toothpaste">Toothpaste</option>
+                      <option value="Biscuits">Biscuits</option>
+                      <option value="Tea">Tea</option>
+                      <option value="Coffee">Coffee</option>
+                      <option value="Margarine">Margarine</option>
+                      <option value="Sauce">Sauce</option>
+                      <option value="Instant Food">Instant Food</option>
                       <option value="Beverages">Beverages</option>
-                      <option value="Canned">Canned</option>
+                      <option value="Dairy">Dairy</option>
+                      <option value="Chocolate">Chocolate</option>
+                      <option value="Ice Cream">Ice Cream</option>
+                      <option value="Detergent">Detergent</option>
+                      <option value="Snacks">Snacks</option>
+                      <option value="Personal Care">Personal Care</option>
                     </select>
                   </div>
-                </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 tracking-wide">Stock Quantity</label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    placeholder="10"
-                    value={stockQuantity}
-                    onChange={(e) => setStockQuantity(e.target.value)}
-                    className="glass-input text-xs py-2 px-3"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 tracking-wide">Product Image URL</label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash..."
-                    value={image}
-                    onChange={(e) => setImage(e.target.value)}
-                    className="glass-input text-xs py-2 px-3"
-                  />
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-bold text-slate-400 tracking-wide">Stock Quantity</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      placeholder="100"
+                      value={stockQuantity}
+                      onChange={(e) => setStockQuantity(e.target.value)}
+                      className="glass-input text-xs py-2 px-3"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex gap-2 pt-2">
@@ -864,7 +876,7 @@ const Admin: React.FC = () => {
                       <td className="py-3.5 font-bold text-theme-text font-mono">{sess.cartId}</td>
                       <td className="py-3.5 text-slate-500 font-medium leading-normal max-w-[220px] truncate">
                         {sess.items && sess.items.length > 0 
-                          ? sess.items.map((it: any) => `${it.product?.productName || 'Product'} (x${it.quantity})`).join(', ') 
+                          ? sess.items.map((it: any) => `${it.product?.name || 'Product'} (x${it.quantity})`).join(', ') 
                           : <span className="italic text-slate-400">Empty Cart</span>
                         }
                       </td>

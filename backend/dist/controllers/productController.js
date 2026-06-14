@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.bulkImportProducts = exports.deleteProduct = exports.createOrUpdateProduct = exports.getProducts = void 0;
+exports.bulkImportProducts = exports.deleteProduct = exports.updateProduct = exports.createProduct = exports.getProducts = void 0;
 const dbService_1 = require("../services/dbService");
 const socketService_1 = require("../services/socketService");
 const getProducts = async (req, res) => {
@@ -13,35 +13,62 @@ const getProducts = async (req, res) => {
     }
 };
 exports.getProducts = getProducts;
-const createOrUpdateProduct = async (req, res) => {
+const createProduct = async (req, res) => {
     try {
-        const { _id, rfidUid, productName, price, weight, expiryDate, category, image, stockQuantity } = req.body;
-        if (!rfidUid || !productName || price === undefined || weight === undefined || !expiryDate || !category || !image || stockQuantity === undefined) {
-            return res.status(400).json({ error: 'Please enter all required product details including stock quantity.' });
+        const { uid, name, price, weight, stock, category } = req.body;
+        if (!uid || !name || price === undefined || weight === undefined || stock === undefined || !category) {
+            return res.status(400).json({ error: 'Please enter all required product details including stock.' });
         }
-        const saved = await dbService_1.dbService.upsertProduct({
-            _id,
-            rfidUid,
-            productName,
+        const saved = await dbService_1.dbService.createProduct({
+            uid,
+            name,
             price: Number(price),
             weight: Number(weight),
-            expiryDate,
+            stock: Number(stock),
             category,
-            image,
-            stockQuantity: Number(stockQuantity),
         });
         (0, socketService_1.emitNotification)({
             type: 'success',
             title: 'Catalog Updated',
-            message: `Product ${productName} registered.`,
+            message: `Product ${name} registered.`,
         });
-        res.status(200).json(saved);
+        res.status(201).json(saved);
     }
     catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
-exports.createOrUpdateProduct = createOrUpdateProduct;
+exports.createProduct = createProduct;
+const updateProduct = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { uid, name, price, weight, stock, category } = req.body;
+        if (!uid || !name || price === undefined || weight === undefined || stock === undefined || !category) {
+            return res.status(400).json({ error: 'Please enter all required product details including stock.' });
+        }
+        const updated = await dbService_1.dbService.updateProduct(id, {
+            uid,
+            name,
+            price: Number(price),
+            weight: Number(weight),
+            stock: Number(stock),
+            category,
+        });
+        if (!updated) {
+            return res.status(404).json({ error: 'Product not found.' });
+        }
+        (0, socketService_1.emitNotification)({
+            type: 'success',
+            title: 'Catalog Updated',
+            message: `Product ${name} updated.`,
+        });
+        res.status(200).json(updated);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+exports.updateProduct = updateProduct;
 const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
@@ -63,30 +90,48 @@ const deleteProduct = async (req, res) => {
 exports.deleteProduct = deleteProduct;
 const bulkImportProducts = async (req, res) => {
     try {
-        const { products } = req.body; // Expects JSON array parsed from CSV
+        const { products } = req.body;
         if (!products || !Array.isArray(products)) {
             return res.status(400).json({ error: 'Invalid bulk import payload. Array required.' });
         }
         console.log(`Processing bulk import of ${products.length} products...`);
         const importedCount = [];
         for (const item of products) {
-            if (item.rfidUid && item.productName && item.price !== undefined) {
-                await dbService_1.dbService.upsertProduct({
-                    rfidUid: item.rfidUid.trim(),
-                    productName: item.productName.trim(),
-                    price: Number(item.price),
-                    weight: Number(item.weight) || 100,
-                    expiryDate: item.expiryDate?.trim() || '2026-12-31',
-                    category: item.category?.trim() || 'General',
-                    image: item.image?.trim() || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
-                });
-                importedCount.push(item.productName);
+            const uid = item.uid?.trim();
+            const name = item.name?.trim();
+            const price = Number(item.price);
+            const weight = Number(item.weight) || 100;
+            const stock = item.stock !== undefined ? Number(item.stock) : 100;
+            const category = item.category?.trim() || 'General';
+            if (uid && name && !isNaN(price) && !isNaN(weight)) {
+                const existing = await dbService_1.dbService.getProductByRfid(uid);
+                if (existing) {
+                    await dbService_1.dbService.updateProduct(existing._id.toString(), {
+                        uid,
+                        name,
+                        price,
+                        weight,
+                        stock,
+                        category,
+                    });
+                }
+                else {
+                    await dbService_1.dbService.createProduct({
+                        uid,
+                        name,
+                        price,
+                        weight,
+                        stock,
+                        category,
+                    });
+                }
+                importedCount.push(name);
             }
         }
         (0, socketService_1.emitNotification)({
             type: 'success',
             title: 'Bulk Import Success',
-            message: `Successfully imported ${importedCount.length} items from CSV.`,
+            message: `Successfully imported ${importedCount.length} items.`,
         });
         res.status(200).json({ success: true, count: importedCount.length });
     }

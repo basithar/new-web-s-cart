@@ -9,6 +9,29 @@ import { useCart } from '../context/CartContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+const getProductImage = (category: string): string => {
+  const mapping: { [key: string]: string } = {
+    'Rice': 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=80',
+    'Milk Powder': 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=300&auto=format&fit=crop&q=80',
+    'Biscuits': 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300&auto=format&fit=crop&q=80',
+    'Snacks': 'https://images.unsplash.com/photo-1599490659283-4462babb6c31?w=300&auto=format&fit=crop&q=80',
+    'Personal Care': 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=300&auto=format&fit=crop&q=80',
+    'Soap': 'https://images.unsplash.com/photo-1607006342411-9a3363d63b36?w=300&auto=format&fit=crop&q=80',
+    'Toothpaste': 'https://images.unsplash.com/photo-1559599189-fe84dea4eb79?w=300&auto=format&fit=crop&q=80',
+    'Tea': 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80',
+    'Coffee': 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=300&auto=format&fit=crop&q=80',
+    'Margarine': 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=300&auto=format&fit=crop&q=80',
+    'Sauce': 'https://images.unsplash.com/photo-1607305387299-a3d9611cd46f?w=300&auto=format&fit=crop&q=80',
+    'Instant Food': 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=300&auto=format&fit=crop&q=80',
+    'Beverages': 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&auto=format&fit=crop&q=80',
+    'Dairy': 'https://images.unsplash.com/photo-1528750955906-79c2409f3e7e?w=300&auto=format&fit=crop&q=80',
+    'Chocolate': 'https://images.unsplash.com/photo-1511381939415-e44015466834?w=300&auto=format&fit=crop&q=80',
+    'Ice Cream': 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=300&auto=format&fit=crop&q=80',
+    'Detergent': 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=300&auto=format&fit=crop&q=80',
+  };
+  return mapping[category] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300';
+};
+
 const Shopping: React.FC = () => {
   const navigate = useNavigate();
   const { 
@@ -107,7 +130,7 @@ const Shopping: React.FC = () => {
   const isStopped = cart.status === 'stopped';
 
   const filteredCatalog = products.filter((p) =>
-    p.productName.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+    p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
     p.category.toLowerCase().includes(catalogSearch.toLowerCase())
   );
 
@@ -286,13 +309,13 @@ const Shopping: React.FC = () => {
                         <tr key={prod._id} className="hover:bg-slate-100/20 dark:hover:bg-slate-900/10">
                           <td className="py-3 flex items-center gap-3.5">
                             <img 
-                              src={prod.image} 
-                              alt={prod.productName} 
+                              src={getProductImage(prod.category)} 
+                              alt={prod.name} 
                               className="w-10 h-10 rounded-xl object-cover bg-slate-100 border border-theme-border shrink-0"
                             />
                             <div>
-                              <span className="font-bold text-theme-text">{prod.productName}</span>
-                              <span className="block text-[9px] text-slate-400 font-semibold uppercase">{prod.rfidUid} ({prod.weight}g)</span>
+                              <span className="font-bold text-theme-text">{prod.name}</span>
+                              <span className="block text-[9px] text-slate-400 font-semibold uppercase">{prod.uid} ({prod.weight}g)</span>
                             </div>
                           </td>
                           <td className="py-3 text-center font-bold text-theme-text">
@@ -429,19 +452,19 @@ const Shopping: React.FC = () => {
                 >
                   <div className="flex items-center gap-2 min-w-0 mr-1.5">
                     <img
-                      src={p.image}
-                      alt={p.productName}
+                      src={getProductImage(p.category)}
+                      alt={p.name}
                       className="w-8 h-8 rounded-lg object-cover bg-slate-100 border border-theme-border shrink-0"
                     />
                     <div className="min-w-0">
-                      <p className="font-bold text-theme-text truncate">{p.productName}</p>
+                      <p className="font-bold text-theme-text truncate">{p.name}</p>
                       <p className="text-[9px] text-slate-400 font-semibold font-mono">Rs. {p.price} • {p.weight}g</p>
                     </div>
                   </div>
                   
                   <button
                     disabled={isStopped}
-                    onClick={() => simulateScan(p.rfidUid)}
+                    onClick={() => simulateScan(p.uid)}
                     className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white font-bold text-[10px] transition-all shrink-0 active:scale-95 disabled:opacity-50"
                   >
                     Add

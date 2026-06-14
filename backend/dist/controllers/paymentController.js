@@ -26,7 +26,7 @@ const processPayment = async (req, res) => {
         for (const item of cart.items) {
             const prod = item.product;
             purchaseItems.push({
-                productName: prod.productName,
+                productName: prod.name,
                 price: prod.price,
                 quantity: item.quantity,
             });

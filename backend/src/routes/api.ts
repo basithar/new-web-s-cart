@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { registerUser, loginUser, updateBudget, getUsers } from '../controllers/authController';
-import { getProducts, createOrUpdateProduct, deleteProduct, bulkImportProducts } from '../controllers/productController';
+import { getProducts, createProduct, updateProduct, deleteProduct, bulkImportProducts } from '../controllers/productController';
 import { getCart, updateItemQuantity, setCartBudget, startShoppingSession, stopShoppingSession, getAllCarts, resumeShoppingSession } from '../controllers/cartController';
 import { scanRfidCard, getScanHistory } from '../controllers/rfidController';
 import { postHeartbeat, getStatus } from '../controllers/esp32Controller';
@@ -17,7 +17,8 @@ router.get('/users', getUsers);
 
 // --- Product/Inventory Catalog Routes ---
 router.get('/products', getProducts);
-router.post('/products', createOrUpdateProduct);
+router.post('/products', createProduct);
+router.put('/products/:id', updateProduct);
 router.post('/products/bulk', bulkImportProducts);
 router.delete('/products/:id', deleteProduct);
 

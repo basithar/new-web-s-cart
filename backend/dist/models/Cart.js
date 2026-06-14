@@ -44,4 +44,4 @@ const CartSchema = new mongoose_1.Schema({
         default: 'active',
     },
 }, { timestamps: true });
-exports.default = mongoose_1.default.model('Cart', CartSchema, 'shopping_sessions');
+exports.default = mongoose_1.default.model('Cart', CartSchema, 'carts');

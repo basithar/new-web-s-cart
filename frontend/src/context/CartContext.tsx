@@ -8,13 +8,12 @@ export interface CartData {
   items: Array<{
     product: {
       _id: string;
-      rfidUid: string;
-      productName: string;
+      uid: string;
+      name: string;
       price: number;
       weight: number;
-      expiryDate: string;
+      stock: number;
       category: string;
-      image: string;
     };
     quantity: number;
   }>;

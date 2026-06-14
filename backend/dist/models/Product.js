@@ -25,13 +25,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const ProductSchema = new mongoose_1.Schema({
-    rfidUid: { type: String, required: true, unique: true },
-    productName: { type: String, required: true },
+    uid: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
     price: { type: Number, required: true },
-    weight: { type: Number, required: true }, // physical weight in grams
-    expiryDate: { type: String, required: true },
+    weight: { type: Number, required: true }, // weight in grams
+    stock: { type: Number, required: true, default: 100 },
     category: { type: String, required: true },
-    image: { type: String, required: true },
-    stockQuantity: { type: Number, required: true, default: 10 },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Product', ProductSchema);

@@ -31,7 +31,7 @@ const scanRfidCard = async (req, res) => {
             uid,
             timestamp: new Date(),
             success: !!product,
-            productName: product ? product.productName : undefined,
+            productName: product ? product.name : undefined,
         });
         // 4. Handle Product Not Found
         if (!product) {
@@ -70,16 +70,15 @@ const scanRfidCard = async (req, res) => {
         (0, socketService_1.emitNotification)({
             type: 'success',
             title: 'RFID Scanned',
-            message: `Added to cart: ${product.productName} (Rs. ${product.price})`,
+            message: `Added to cart: ${product.name} (Rs. ${product.price})`,
         });
         // 7. Respond to hardware client (ESP32-S3)
         res.status(200).json({
             success: true,
             product: {
-                name: product.productName,
+                name: product.name,
                 price: product.price,
                 weight: product.weight,
-                expiryDate: product.expiryDate,
             },
         });
     }

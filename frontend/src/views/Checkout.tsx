@@ -547,7 +547,7 @@ const Checkout: React.FC = () => {
                 return (
                   <div key={prod._id} className="flex justify-between items-center text-xs">
                     <div>
-                      <p className="font-bold text-theme-text truncate max-w-[140px]">{prod.productName}</p>
+                      <p className="font-bold text-theme-text truncate max-w-[140px]">{prod.name}</p>
                       <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Qty: {item.quantity}</p>
                     </div>
                     <span className="font-extrabold text-slate-550 dark:text-slate-350">

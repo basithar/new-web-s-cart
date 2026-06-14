@@ -101,8 +101,8 @@ const IoTSimulator: React.FC<IoTSimulatorProps> = ({ isOpen, onClose }) => {
                   className="p-3 rounded-xl bg-white/40 dark:bg-slate-950/40 border border-slate-200/50 dark:border-slate-800/50 flex items-center justify-between text-xs"
                 >
                   <div className="overflow-hidden mr-2">
-                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{p.productName}</p>
-                    <p className="text-[10px] text-slate-400 font-semibold uppercase">{p.rfidUid} ({p.weight}g)</p>
+                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{p.name}</p>
+                    <p className="text-[10px] text-slate-400 font-semibold uppercase">{p.uid} ({p.weight}g)</p>
                   </div>
                   
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -117,7 +117,7 @@ const IoTSimulator: React.FC<IoTSimulatorProps> = ({ isOpen, onClose }) => {
                     )}
                     
                     <button
-                      onClick={() => simulateScan(p.rfidUid)}
+                      onClick={() => simulateScan(p.uid)}
                       className="w-7 h-7 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white flex items-center justify-center transition-colors font-bold"
                       title="Add 1 via RFID Scan"
                     >

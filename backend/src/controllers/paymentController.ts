@@ -39,7 +39,7 @@ export const processPayment = async (req: Request, res: Response) => {
     for (const item of cart.items) {
       const prod = item.product as any;
       purchaseItems.push({
-        productName: prod.productName,
+        productName: prod.name,
         price: prod.price,
         quantity: item.quantity,
       });

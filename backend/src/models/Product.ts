@@ -1,26 +1,22 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IProduct extends Document {
-  rfidUid: string;
-  productName: string;
+  uid: string;
+  name: string;
   price: number;
   weight: number; // in grams
-  expiryDate: string; // YYYY-MM-DD
+  stock: number;
   category: string;
-  image: string;
-  stockQuantity: number;
 }
 
 const ProductSchema: Schema = new Schema(
   {
-    rfidUid: { type: String, required: true, unique: true },
-    productName: { type: String, required: true },
+    uid: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
     price: { type: Number, required: true },
-    weight: { type: Number, required: true }, // physical weight in grams
-    expiryDate: { type: String, required: true },
+    weight: { type: Number, required: true }, // weight in grams
+    stock: { type: Number, required: true, default: 100 },
     category: { type: String, required: true },
-    image: { type: String, required: true },
-    stockQuantity: { type: Number, required: true, default: 10 },
   },
   { timestamps: true }
 );
