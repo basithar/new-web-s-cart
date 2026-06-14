@@ -3,7 +3,7 @@ import axios from 'axios';
 import { User, Mail, Wallet, Calendar, ShoppingBag, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_URL } from '../config';
 
 const Profile: React.FC = () => {
   const { user } = useAuth();

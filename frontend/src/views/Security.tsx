@@ -7,7 +7,7 @@ import {
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_URL } from '../config';
 
 const Security: React.FC = () => {
   const { cart } = useCart();

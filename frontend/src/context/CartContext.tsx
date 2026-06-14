@@ -75,9 +75,9 @@ interface CartContextType {
   clearActiveReceipt: () => void;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+import { API_URL } from '../config';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, updateUserBudget } = useAuth();
@@ -149,8 +149,16 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!socket) return;
 
-    // Join room for this cart ID
-    socket.emit('join_cart', cartId);
+    const handleConnect = () => {
+      console.log('🔌 Socket connected/reconnected, joining cart room:', cartId);
+      socket.emit('join_cart', cartId);
+    };
+
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    socket.on('connect', handleConnect);
 
     socket.on('cart_updated', (updatedCart: CartData) => {
       console.log('⚡ Cart updated via Socket.IO:', updatedCart);
@@ -160,6 +168,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      socket.off('connect', handleConnect);
       socket.emit('leave_cart', cartId);
       socket.off('cart_updated');
     };
@@ -173,6 +182,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await axios.post(`${API_URL}/cart/budget`, { cartId, budget });
       if (user) await updateUserBudget(budget);
+      await fetchCartDetails(cartId);
     } catch (err) {
       console.error(err);
       if (cart) setCart({ ...cart, budget });
@@ -182,6 +192,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateItemQuantity = async (productId: string, quantity: number) => {
     try {
       await axios.post(`${API_URL}/cart/quantity`, { cartId, productId, quantity });
+      await fetchCartDetails(cartId);
     } catch (err) {
       console.error(err);
     }
@@ -222,6 +233,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const simulateScan = async (uid: string) => {
     try {
       await axios.post(`${API_URL}/rfid/scan`, { cartId, uid });
+      await fetchCartDetails(cartId);
     } catch (err: any) {
       triggerLocalNotification('error', 'RFID Scan Failed', err.response?.data?.error || err.message);
     }
@@ -230,6 +242,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const simulateWeightUpdate = async (physicalWeight: number) => {
     try {
       await axios.post(`${API_URL}/cart/weight-update`, { cartId, physicalWeight });
+      await fetchCartDetails(cartId);
     } catch (err) {
       console.error(err);
     }

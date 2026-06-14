@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_URL } from '../config';
 
 const getProductImage = (category: string): string => {
   const mapping: { [key: string]: string } = {
