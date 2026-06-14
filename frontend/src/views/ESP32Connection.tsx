@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { 
   Cpu, Wifi, Signal, Clock, CheckCircle2, 
-  XCircle, AlertTriangle, RefreshCw, Radio, Scale, ShoppingBag
+  XCircle, AlertTriangle, RefreshCw, Radio, Scale, ShoppingBag, Lock, ShieldCheck, ArrowRight
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
@@ -10,26 +11,79 @@ import { useSocket } from '../context/SocketContext';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ESP32Connection: React.FC = () => {
-  const { esp32Status, scanHistory, fetchScanHistory, fetchEsp32Status } = useCart();
+  const navigate = useNavigate();
+  const { 
+    cart, 
+    esp32Status, 
+    scanHistory, 
+    fetchScanHistory, 
+    fetchEsp32Status, 
+    simulateScan, 
+    simulateWeightUpdate 
+  } = useCart();
   const { triggerLocalNotification } = useSocket();
+  
   const [loading, setLoading] = useState(false);
+  const [mockRfid, setMockRfid] = useState('');
+  const [mockWeight, setMockWeight] = useState('');
+  const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => {
     fetchScanHistory();
     fetchEsp32Status();
+    
+    // Load products list for dropdown helper in simulation
+    axios.get(`${API_URL}/products`)
+      .then(res => setProducts(res.data))
+      .catch(err => console.error(err));
   }, []);
 
   const triggerMockHeartbeat = async () => {
     setLoading(true);
     try {
-      // Generate a random signal strength RSSI between -50 and -80
       const rssi = Math.floor(-50 - Math.random() * 30);
+      const currentWeight = cart ? cart.physicalWeight : 0;
       await axios.post(`${API_URL}/esp32/heartbeat`, {
+        cartId: cart?.cartId || 'CART_001',
         wifiStatus: 'Connected',
         rssi,
+        weight: currentWeight
       });
       await fetchEsp32Status();
-      triggerLocalNotification('success', 'ESP32 Status', 'Mock heartbeat ping sent to server.');
+      triggerLocalNotification('success', 'ESP32 Telemetry Status', 'Hardware heartbeat ping registered successfully.');
+    } catch (err) {
+      console.error(err);
+      triggerLocalNotification('error', 'ESP32 Status', 'Failed to send heartbeat.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSimulateRfid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mockRfid.trim()) return;
+    setLoading(true);
+    try {
+      await simulateScan(mockRfid.trim());
+      setMockRfid('');
+      await fetchScanHistory();
+      await fetchEsp32Status();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSimulateWeight = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const wt = Number(mockWeight);
+    if (isNaN(wt) || wt < 0) return;
+    setLoading(true);
+    try {
+      await simulateWeightUpdate(wt);
+      setMockWeight('');
+      await fetchEsp32Status();
     } catch (err) {
       console.error(err);
     } finally {
@@ -130,8 +184,8 @@ const ESP32Connection: React.FC = () => {
           <Scale className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Last Weight Reading</span>
           <h4 className="font-extrabold text-theme-text text-xs mt-1">
-            {esp32Status?.connected && (esp32Status as any).lastWeightReading !== undefined
-              ? `${(esp32Status as any).lastWeightReading}g`
+            {esp32Status?.connected && esp32Status.lastWeightReading !== undefined
+              ? `${esp32Status.lastWeightReading}g`
               : '0g'
             }
           </h4>
@@ -140,10 +194,10 @@ const ESP32Connection: React.FC = () => {
         {/* Current Shopping Session */}
         <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
           <ShoppingBag className="w-5 h-5 text-emerald-500" />
-          <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Current Session</span>
+          <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Current Session</span>
           <h4 className="font-extrabold text-theme-text text-xs font-mono mt-1">
-            {esp32Status?.connected && (esp32Status as any).currentShoppingSession 
-              ? (esp32Status as any).currentShoppingSession 
+            {esp32Status?.connected && esp32Status.currentShoppingSession 
+              ? esp32Status.currentShoppingSession 
               : 'None'
             }
           </h4>
@@ -160,7 +214,212 @@ const ESP32Connection: React.FC = () => {
 
       </div>
 
-      {/* 3. Scanning History Logs */}
+      {/* 3. Active Kiosk Cart Sync Layer (Expected vs Actual, Total, Mismatch Status) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Left Side: Cart Synchronization metrics */}
+        <div className="md:col-span-2 glass-panel rounded-3xl p-6 bg-theme-card border-theme-border space-y-6">
+          <div className="flex justify-between items-center border-b border-theme-border pb-3">
+            <div>
+              <h4 className="font-extrabold text-theme-text">Active Kiosk Cart Synchronization</h4>
+              <p className="text-xs text-slate-400">Verifying live shopping cart states with physical scale telemetry.</p>
+            </div>
+            <span className="text-[10px] font-mono bg-theme-bg border border-theme-border px-3 py-1 rounded-full text-slate-400">
+              ID: {cart?.cartId || 'CART_001'}
+            </span>
+          </div>
+
+          {!cart ? (
+            <div className="p-8 text-center text-slate-400 text-xs">
+              No active shopping cart session. Start a session from the Kiosk view to sync.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              
+              {/* Cart Total amount value */}
+              <div className="p-4 rounded-2xl bg-theme-bg border border-theme-border space-y-2">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Cart Total Amount</span>
+                <h3 className="text-lg font-extrabold text-theme-text">Rs. {cart.totalAmount.toLocaleString()}</h3>
+                <p className="text-[10px] text-slate-450 font-semibold">{cart.items.length} unique items</p>
+              </div>
+
+              {/* Weight Comparison */}
+              <div className="p-4 rounded-2xl bg-theme-bg border border-theme-border space-y-2">
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Expected vs Actual</span>
+                <h3 className="text-lg font-extrabold text-theme-text">
+                  {cart.expectedWeight}g <span className="text-slate-400 text-xs font-semibold">vs</span> {cart.physicalWeight}g
+                </h3>
+                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      cart.weightMismatch ? 'bg-rose-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, cart.expectedWeight > 0 ? (cart.physicalWeight / cart.expectedWeight) * 100 : 0)}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Weight verification status */}
+              <div className={`p-4 rounded-2xl border space-y-2 ${
+                cart.weightMismatch 
+                  ? 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400' 
+                  : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              }`}>
+                <span className="text-[9px] font-bold uppercase tracking-wider block opacity-70">Verification Status</span>
+                <h3 className="text-lg font-extrabold flex items-center gap-1.5">
+                  {cart.weightMismatch ? (
+                    <>
+                      <AlertTriangle className="w-5 h-5 text-rose-550 shrink-0" />
+                      Mismatch
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                      Verified
+                    </>
+                  )}
+                </h3>
+                <p className="text-[10px] opacity-85 leading-tight font-medium">
+                  {cart.weightMismatch 
+                    ? 'Checkout blocked. Please resolve discrepancy.' 
+                    : 'System verification passed. Checkout allowed.'}
+                </p>
+              </div>
+
+            </div>
+          )}
+
+          {/* Checkout Guard Visual */}
+          {cart && (
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${
+              cart.weightMismatch 
+                ? 'bg-rose-500/5 border-rose-500/20' 
+                : 'bg-emerald-500/5 border-emerald-500/20'
+            }`}>
+              <div className="flex items-center gap-2.5 text-xs">
+                <ShieldCheck className={`w-5 h-5 shrink-0 ${cart.weightMismatch ? 'text-rose-500' : 'text-emerald-500'}`} />
+                <div className="text-left font-medium">
+                  <p className="font-bold">Checkout Authorization Guard</p>
+                  <p className="opacity-80 text-[10px]">
+                    {cart.weightMismatch 
+                      ? 'Checkout triggers a payload block. Telemetry scales must match catalog weights.' 
+                      : 'Scale aligned. The shopper can pay now.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                disabled={cart.weightMismatch || cart.items.length === 0}
+                onClick={() => navigate('/checkout')}
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1 transition-all ${
+                  cart.weightMismatch || cart.items.length === 0
+                    ? 'bg-slate-400/35 text-slate-400 cursor-not-allowed border border-transparent' 
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/10'
+                }`}
+              >
+                Proceed to Checkout <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right Side: ESP32 Hardware Simulators */}
+        <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border space-y-6">
+          <div>
+            <h4 className="font-extrabold text-theme-text">ESP32 Hardware Simulation</h4>
+            <p className="text-xs text-slate-400">Trigger simulated hardware inputs for the MFRC522 and HX711 scale.</p>
+          </div>
+
+          <div className="space-y-4">
+            
+            {/* Simulation A: RFID scan */}
+            <form onSubmit={handleSimulateRfid} className="space-y-2 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Simulate RFID Tag Scanned</label>
+              
+              {/* Dropdown helper with product list */}
+              <select
+                onChange={(e) => setMockRfid(e.target.value)}
+                value={mockRfid}
+                className="w-full px-3 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">-- Select Seeded Catalog Product --</option>
+                {products.map(p => (
+                  <option key={p.uid} value={p.uid}>
+                    {p.name} ({p.uid} - {p.weight}g)
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Or enter custom UID..."
+                  value={mockRfid}
+                  onChange={(e) => setMockRfid(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md"
+                >
+                  Scan
+                </button>
+              </div>
+            </form>
+
+            {/* Simulation B: Scale Telemetry Weight */}
+            <form onSubmit={handleSimulateWeight} className="space-y-2 text-left">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Simulate Scale Weight (grams)</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="e.g. 1500"
+                  value={mockWeight}
+                  onChange={(e) => setMockWeight(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md"
+                >
+                  Update
+                </button>
+              </div>
+              
+              {cart && (
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      simulateWeightUpdate(cart.expectedWeight);
+                      triggerLocalNotification('success', 'Weight Aligned', 'Physical telemetry weight matched expected cart weight.');
+                    }}
+                    className="underline text-[10px] text-emerald-500 font-bold"
+                  >
+                    Align with Expected ({cart.expectedWeight}g)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      simulateWeightUpdate(cart.expectedWeight + 200);
+                      triggerLocalNotification('warning', 'Mismatch Induced', 'Induced a +200g weight discrepancy.');
+                    }}
+                    className="underline text-[10px] text-rose-500 font-bold"
+                  >
+                    Induce Mismatch (+200g)
+                  </button>
+                </div>
+              )}
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+
+      {/* 4. Scanning History Logs */}
       <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border">
         <div className="flex justify-between items-center mb-6">
           <div>

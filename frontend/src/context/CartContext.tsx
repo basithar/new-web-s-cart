@@ -32,6 +32,8 @@ export interface ESP32Status {
   rssi: number;
   lastRfidUid: string;
   lastScanTime: string;
+  lastWeightReading?: number;
+  currentShoppingSession?: string;
 }
 
 export interface RFIDScanLog {
