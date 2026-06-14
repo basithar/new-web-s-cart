@@ -113,6 +113,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/admin/products" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="/admin/users" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="/admin/transactions" element={<AdminRoute><Admin /></AdminRoute>} />
+        <Route path="/admin/sessions" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="/admin/rfid" element={<AdminRoute><Admin /></AdminRoute>} />
         <Route path="/admin/esp32" element={<AdminRoute><ESP32Connection /></AdminRoute>} />
         <Route path="/admin/db" element={<AdminRoute><Admin /></AdminRoute>} />

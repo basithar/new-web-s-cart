@@ -126,6 +126,11 @@ const Checkout: React.FC = () => {
       return;
     }
 
+    if (cart?.weightMismatch) {
+      triggerLocalNotification('error', 'Payment Blocked', 'Weight mismatch detected. Please rescan or remove unscanned items.');
+      return;
+    }
+
     // Launch Simulated Payment Overlay
     setIsProcessing(true);
     setPaymentProgress(0);
@@ -567,6 +572,25 @@ const Checkout: React.FC = () => {
                 </span>
               </div>
 
+              <div className="flex justify-between border-t border-theme-border pt-2">
+                <span>Expected Weight:</span>
+                <span className="font-extrabold text-theme-text">{cart?.expectedWeight || 0}g</span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Scale Telemetry:</span>
+                <span className={`font-extrabold ${cart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
+                  {cart?.physicalWeight || 0}g
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Weight Verification:</span>
+                <span className={`font-extrabold uppercase ${cart?.weightMismatch ? 'text-rose-550' : 'text-emerald-500'}`}>
+                  {cart?.weightMismatch ? 'WEIGHT MISMATCH' : 'VERIFIED'}
+                </span>
+              </div>
+
               <div className="flex justify-between border-t border-theme-border pt-3 text-sm">
                 <span className="font-extrabold text-theme-text">Total Bill:</span>
                 <span className="font-extrabold text-emerald-500 text-sm">Rs. {total.toLocaleString()}</span>
@@ -581,7 +605,12 @@ const Checkout: React.FC = () => {
             {/* Pay Button */}
             <button
               onClick={handleSubmit}
-              className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              disabled={cart?.weightMismatch}
+              className={`w-full py-4 rounded-2xl text-white font-bold text-xs uppercase tracking-wider shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
+                cart?.weightMismatch 
+                  ? 'bg-rose-500/40 cursor-not-allowed opacity-60' 
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/10'
+              }`}
             >
               <CreditCard className="w-4 h-4" /> Pay Now (Rs. {total.toLocaleString()})
             </button>

@@ -29,6 +29,7 @@ const seedInMemoryData = () => {
             expiryDate: '2026-07-01',
             category: 'Dairy',
             image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+            stockQuantity: 15,
         },
         {
             rfidUid: 'RFID002',
@@ -38,6 +39,7 @@ const seedInMemoryData = () => {
             expiryDate: '2026-06-15',
             category: 'Bakery',
             image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&auto=format&fit=crop&q=80',
+            stockQuantity: 20,
         },
         {
             rfidUid: 'RFID003',
@@ -47,6 +49,7 @@ const seedInMemoryData = () => {
             expiryDate: '2027-01-01',
             category: 'Grains',
             image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+            stockQuantity: 10,
         },
     ];
     mockProducts.forEach((p, idx) => {
@@ -96,6 +99,7 @@ const seedInMemoryData = () => {
             { productName: 'Fresh Bread', price: 250, quantity: 2 },
         ],
         totalPaid: 950,
+        totalWeight: 1800,
         createdAt: new Date(Date.now() - 86400000),
         updatedAt: new Date(Date.now() - 86400000),
     });
@@ -208,6 +212,7 @@ exports.dbService = {
             expiryDate: productData.expiryDate,
             category: productData.category,
             image: productData.image,
+            stockQuantity: productData.stockQuantity !== undefined ? Number(productData.stockQuantity) : 10,
             createdAt: new Date(),
             updatedAt: new Date(),
         };
@@ -222,6 +227,18 @@ exports.dbService = {
         const idx = memProducts.findIndex((p) => p._id.toString() === id || p.id === id);
         if (idx !== -1) {
             memProducts.splice(idx, 1);
+            return true;
+        }
+        return false;
+    },
+    decrementProductStock: async (id, quantity) => {
+        if (!db_1.isInMemoryFallback) {
+            const res = await Product_1.default.findByIdAndUpdate(id, { $inc: { stockQuantity: -quantity } }, { new: true });
+            return res !== null;
+        }
+        const idx = memProducts.findIndex((p) => p._id.toString() === id || p.id === id);
+        if (idx !== -1) {
+            memProducts[idx].stockQuantity = Math.max(0, memProducts[idx].stockQuantity - quantity);
             return true;
         }
         return false;
@@ -246,6 +263,24 @@ exports.dbService = {
             ...cart.toObject ? cart.toObject() : cart,
             items: populatedItems,
         };
+    },
+    getCarts: async () => {
+        if (!db_1.isInMemoryFallback) {
+            return await Cart_1.default.find({}).populate('items.product').sort({ updatedAt: -1 });
+        }
+        return memCarts.map((cart) => {
+            const populatedItems = cart.items.map((item) => {
+                const productObj = memProducts.find((p) => p._id.toString() === item.product.toString() || p.id === item.product.toString());
+                return {
+                    ...item,
+                    product: productObj || item.product,
+                };
+            });
+            return {
+                ...cart.toObject ? cart.toObject() : cart,
+                items: populatedItems,
+            };
+        }).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     },
     saveCart: async (cartData) => {
         if (!db_1.isInMemoryFallback) {
@@ -331,6 +366,7 @@ exports.dbService = {
             email: txData.email,
             items: txData.items,
             totalPaid: txData.totalPaid,
+            totalWeight: txData.totalWeight || 0,
             paymentStatus: txData.paymentStatus || 'Success',
             createdAt: new Date(),
             updatedAt: new Date(),
@@ -359,6 +395,7 @@ const seedMongoDatabase = async () => {
                 expiryDate: '2026-07-01',
                 category: 'Dairy',
                 image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+                stockQuantity: 15,
             },
             {
                 rfidUid: 'RFID002',
@@ -368,6 +405,7 @@ const seedMongoDatabase = async () => {
                 expiryDate: '2026-06-15',
                 category: 'Bakery',
                 image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&auto=format&fit=crop&q=80',
+                stockQuantity: 20,
             },
             {
                 rfidUid: 'RFID003',
@@ -377,26 +415,33 @@ const seedMongoDatabase = async () => {
                 expiryDate: '2027-01-01',
                 category: 'Grains',
                 image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+                stockQuantity: 10,
             },
         ];
         await Product_1.default.insertMany(mockProducts);
-        // Seed default Users
-        await User_1.default.create({
-            firebaseId: 'mock_uid_customer',
-            email: 'customer@smartcart.com',
-            name: 'Smart Customer',
-            role: 'customer',
-            budgetLimit: 2000,
-            budgetHistory: [{ date: new Date(), limit: 2000 }]
-        });
-        await User_1.default.create({
-            firebaseId: 'mock_uid_admin',
-            email: 'admin@smartcart.com',
-            name: 'Smart Admin',
-            role: 'admin',
-            budgetLimit: 0,
-            budgetHistory: []
-        });
+        // Seed default Users safely if they do not exist
+        const customerExists = await User_1.default.findOne({ email: 'customer@smartcart.com' });
+        if (!customerExists) {
+            await User_1.default.create({
+                firebaseId: 'mock_uid_customer',
+                email: 'customer@smartcart.com',
+                name: 'Smart Customer',
+                role: 'customer',
+                budgetLimit: 2000,
+                budgetHistory: [{ date: new Date(), limit: 2000 }]
+            });
+        }
+        const adminExists = await User_1.default.findOne({ email: 'admin@smartcart.com' });
+        if (!adminExists) {
+            await User_1.default.create({
+                firebaseId: 'mock_uid_admin',
+                email: 'admin@smartcart.com',
+                name: 'Smart Admin',
+                role: 'admin',
+                budgetLimit: 0,
+                budgetHistory: []
+            });
+        }
         console.log('✨ MongoDB seeded successfully!');
     }
     catch (err) {

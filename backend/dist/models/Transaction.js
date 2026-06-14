@@ -39,6 +39,7 @@ const TransactionSchema = new mongoose_1.Schema({
         },
     ],
     totalPaid: { type: Number, required: true },
+    totalWeight: { type: Number, default: 0 },
     paymentStatus: { type: String, default: 'Success' },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Transaction', TransactionSchema);

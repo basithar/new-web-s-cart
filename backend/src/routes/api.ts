@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { registerUser, loginUser, updateBudget, getUsers } from '../controllers/authController';
 import { getProducts, createOrUpdateProduct, deleteProduct, bulkImportProducts } from '../controllers/productController';
-import { getCart, updateItemQuantity, setCartBudget } from '../controllers/cartController';
+import { getCart, updateItemQuantity, setCartBudget, startShoppingSession, stopShoppingSession, getAllCarts, resumeShoppingSession } from '../controllers/cartController';
 import { scanRfidCard, getScanHistory } from '../controllers/rfidController';
 import { postHeartbeat, getStatus } from '../controllers/esp32Controller';
 import { updatePhysicalWeight } from '../controllers/securityController';
@@ -26,6 +26,10 @@ router.get('/cart/:cartId', getCart);
 router.post('/cart/quantity', updateItemQuantity);
 router.post('/cart/budget', setCartBudget);
 router.post('/cart/weight-update', updatePhysicalWeight);
+router.post('/cart/start', startShoppingSession);
+router.post('/cart/stop', stopShoppingSession);
+router.post('/cart/resume', resumeShoppingSession);
+router.get('/shopping-sessions', getAllCarts);
 
 // --- RFID Hardware / Scan Simulator Routes ---
 router.post('/rfid/scan', scanRfidCard);

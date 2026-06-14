@@ -16,10 +16,22 @@ export const scanRfidCard = async (req: Request, res: Response) => {
     // Register scan on the ESP32 connection state
     esp32Service.registerScan(uid);
 
-    // 1. Search database Products collection
+    // 1. Find or check Cart session status
+    let cart = await dbService.getCart(cartId);
+    if (!cart || cart.status !== 'active') {
+      console.warn(`🚨 Rejected RFID Scan UID ${uid} because session status is ${cart ? cart.status : 'inactive'}`);
+      emitNotification({
+        type: 'warning',
+        title: 'Scan Rejected',
+        message: 'Kiosk session is not active. Please click Start Shopping on the kiosk.',
+      });
+      return res.status(400).json({ success: false, error: 'Shopping session is not active.' });
+    }
+
+    // 2. Search database Products collection
     const product = await dbService.getProductByRfid(uid);
 
-    // 2. Log scan attempt in RFIDScan history collection
+    // 3. Log scan attempt in RFIDScan history collection
     await dbService.addRFIDScan({
       uid,
       timestamp: new Date(),
@@ -27,7 +39,7 @@ export const scanRfidCard = async (req: Request, res: Response) => {
       productName: product ? product.productName : undefined,
     });
 
-    // 3. Handle Product Not Found
+    // 4. Handle Product Not Found
     if (!product) {
       console.warn(`⚠️ RFID Tag ${uid} is unrecognized!`);
       emitNotification({
@@ -36,21 +48,6 @@ export const scanRfidCard = async (req: Request, res: Response) => {
         message: `Scanned unregistered tag UID: "${uid}"`,
       });
       return res.status(404).json({ success: false, error: 'Product Not Found' });
-    }
-
-    // 4. Find or initialize Cart session
-    let cart = await dbService.getCart(cartId);
-    if (!cart) {
-      cart = await dbService.saveCart({
-        cartId,
-        items: [],
-        budget: 0,
-        totalAmount: 0,
-        expectedWeight: 0,
-        physicalWeight: 0,
-        weightMismatch: false,
-        status: 'active',
-      });
     }
 
     const productIdStr = product._id.toString();

@@ -4,6 +4,8 @@ export interface ESP32Status {
   rssi: number; // Signal strength in dBm
   lastRfidUid: string;
   lastScanTime: string;
+  lastWeightReading: number;
+  currentShoppingSession: string;
   lastActive: Date | null;
 }
 
@@ -14,6 +16,8 @@ let currentStatus: ESP32Status = {
   rssi: -100,
   lastRfidUid: 'None',
   lastScanTime: 'Never',
+  lastWeightReading: 0,
+  currentShoppingSession: 'None',
   lastActive: null,
 };
 
@@ -32,11 +36,13 @@ export const esp32Service = {
     return currentStatus;
   },
 
-  updateHeartbeat: (wifiStatus: string, rssi: number) => {
+  updateHeartbeat: (wifiStatus: string, rssi: number, cartId?: string, weight?: number) => {
     currentStatus.connected = true;
     currentStatus.wifiStatus = wifiStatus === 'Connected' ? 'Connected' : 'Disconnected';
     currentStatus.rssi = rssi;
     currentStatus.lastActive = new Date();
+    if (cartId) currentStatus.currentShoppingSession = cartId;
+    if (weight !== undefined) currentStatus.lastWeightReading = weight;
   },
 
   registerScan: (uid: string) => {
@@ -44,5 +50,12 @@ export const esp32Service = {
     currentStatus.lastActive = new Date();
     currentStatus.lastRfidUid = uid;
     currentStatus.lastScanTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  },
+
+  registerWeight: (cartId: string, weight: number) => {
+    currentStatus.connected = true;
+    currentStatus.lastActive = new Date();
+    currentStatus.lastWeightReading = weight;
+    currentStatus.currentShoppingSession = cartId;
   },
 };

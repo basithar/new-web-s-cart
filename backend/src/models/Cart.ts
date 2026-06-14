@@ -15,7 +15,7 @@ export interface ICart extends Document {
   expectedWeight: number; // in grams
   physicalWeight: number; // in grams from IoT scale
   weightMismatch: boolean;
-  status: 'active' | 'checkout' | 'completed';
+  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed';
 }
 
 const CartSchema: Schema = new Schema(
@@ -35,11 +35,11 @@ const CartSchema: Schema = new Schema(
     weightMismatch: { type: Boolean, default: false },
     status: {
       type: String,
-      enum: ['active', 'checkout', 'completed'],
+      enum: ['pending', 'active', 'stopped', 'checkout', 'completed'],
       default: 'active',
     },
   },
   { timestamps: true }
 );
 
-export default mongoose.model<ICart>('Cart', CartSchema);
+export default mongoose.model<ICart>('Cart', CartSchema, 'shopping_sessions');

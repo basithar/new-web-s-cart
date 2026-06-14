@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { 
   Cpu, Wifi, Signal, Clock, CheckCircle2, 
-  XCircle, AlertTriangle, RefreshCw, Radio
+  XCircle, AlertTriangle, RefreshCw, Radio, Scale, ShoppingBag
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
@@ -105,23 +105,14 @@ const ESP32Connection: React.FC = () => {
       )}
 
       {/* 2. Detailed Telemetry Widgets Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         
         {/* Wifi Network status */}
         <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
           <Wifi className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Wi-Fi Connection</span>
-          <h4 className="font-extrabold text-theme-text text-base">
+          <h4 className="font-extrabold text-theme-text text-xs mt-1">
             {esp32Status?.connected ? 'Connected' : 'Offline'}
-          </h4>
-        </div>
-
-        {/* WiFi Signal strength RSSI */}
-        <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
-          <Signal className="w-5 h-5 text-emerald-500" />
-          <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Signal Strength (RSSI)</span>
-          <h4 className={`font-extrabold text-base ${signal.color}`}>
-            {esp32Status?.connected ? `${esp32Status.rssi} dBm (${signal.label})` : 'N/A'}
           </h4>
         </div>
 
@@ -129,17 +120,41 @@ const ESP32Connection: React.FC = () => {
         <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
           <Radio className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Last RFID tag</span>
-          <h4 className="font-extrabold text-theme-text text-base font-mono">
+          <h4 className="font-extrabold text-theme-text text-xs font-mono mt-1">
             {esp32Status?.lastRfidUid || 'None'}
           </h4>
         </div>
 
-        {/* Last scan time */}
+        {/* Last Weight Reading */}
         <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
-          <Clock className="w-5 h-5 text-emerald-500" />
-          <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Last Scan Time</span>
-          <h4 className="font-extrabold text-theme-text text-base">
-            {esp32Status?.lastScanTime || 'Never'}
+          <Scale className="w-5 h-5 text-emerald-500" />
+          <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Last Weight Reading</span>
+          <h4 className="font-extrabold text-theme-text text-xs mt-1">
+            {esp32Status?.connected && (esp32Status as any).lastWeightReading !== undefined
+              ? `${(esp32Status as any).lastWeightReading}g`
+              : '0g'
+            }
+          </h4>
+        </div>
+
+        {/* Current Shopping Session */}
+        <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
+          <ShoppingBag className="w-5 h-5 text-emerald-500" />
+          <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Current Session</span>
+          <h4 className="font-extrabold text-theme-text text-xs font-mono mt-1">
+            {esp32Status?.connected && (esp32Status as any).currentShoppingSession 
+              ? (esp32Status as any).currentShoppingSession 
+              : 'None'
+            }
+          </h4>
+        </div>
+
+        {/* WiFi Signal strength RSSI */}
+        <div className="glass-panel rounded-2xl p-5 space-y-1 text-left bg-theme-card border-theme-border">
+          <Signal className="w-5 h-5 text-emerald-500" />
+          <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Signal Strength</span>
+          <h4 className={`font-extrabold text-xs mt-1 ${signal.color}`}>
+            {esp32Status?.connected ? `${esp32Status.rssi} dBm` : 'N/A'}
           </h4>
         </div>
 

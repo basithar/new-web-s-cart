@@ -15,6 +15,7 @@ export interface ITransaction extends Document {
   email: string;
   items: ITransactionItem[];
   totalPaid: number;
+  totalWeight: number; // physical weight in grams
   paymentStatus?: string; // e.g. "Success"
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +37,7 @@ const TransactionSchema: Schema = new Schema(
       },
     ],
     totalPaid: { type: Number, required: true },
+    totalWeight: { type: Number, default: 0 },
     paymentStatus: { type: String, default: 'Success' },
   },
   { timestamps: true }

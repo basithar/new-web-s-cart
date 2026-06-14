@@ -4,9 +4,9 @@ exports.getStatus = exports.postHeartbeat = void 0;
 const esp32Service_1 = require("../services/esp32Service");
 const postHeartbeat = async (req, res) => {
     try {
-        const { wifiStatus = 'Connected', rssi = -60 } = req.body;
+        const { wifiStatus = 'Connected', rssi = -60, cartId, weight } = req.body;
         // Register heartbeat
-        esp32Service_1.esp32Service.updateHeartbeat(wifiStatus, Number(rssi));
+        esp32Service_1.esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, weight !== undefined ? Number(weight) : undefined);
         res.status(200).json({ success: true, message: 'Heartbeat registered.' });
     }
     catch (error) {

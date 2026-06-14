@@ -8,6 +8,7 @@ export interface IProduct extends Document {
   expiryDate: string; // YYYY-MM-DD
   category: string;
   image: string;
+  stockQuantity: number;
 }
 
 const ProductSchema: Schema = new Schema(
@@ -19,6 +20,7 @@ const ProductSchema: Schema = new Schema(
     expiryDate: { type: String, required: true },
     category: { type: String, required: true },
     image: { type: String, required: true },
+    stockQuantity: { type: Number, required: true, default: 10 },
   },
   { timestamps: true }
 );

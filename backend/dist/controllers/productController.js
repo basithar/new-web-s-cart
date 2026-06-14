@@ -15,9 +15,9 @@ const getProducts = async (req, res) => {
 exports.getProducts = getProducts;
 const createOrUpdateProduct = async (req, res) => {
     try {
-        const { _id, rfidUid, productName, price, weight, expiryDate, category, image } = req.body;
-        if (!rfidUid || !productName || price === undefined || weight === undefined || !expiryDate || !category || !image) {
-            return res.status(400).json({ error: 'Please enter all required product details.' });
+        const { _id, rfidUid, productName, price, weight, expiryDate, category, image, stockQuantity } = req.body;
+        if (!rfidUid || !productName || price === undefined || weight === undefined || !expiryDate || !category || !image || stockQuantity === undefined) {
+            return res.status(400).json({ error: 'Please enter all required product details including stock quantity.' });
         }
         const saved = await dbService_1.dbService.upsertProduct({
             _id,
@@ -28,6 +28,7 @@ const createOrUpdateProduct = async (req, res) => {
             expiryDate,
             category,
             image,
+            stockQuantity: Number(stockQuantity),
         });
         (0, socketService_1.emitNotification)({
             type: 'success',

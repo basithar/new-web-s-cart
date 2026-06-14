@@ -25,6 +25,7 @@ const seedInMemoryData = () => {
       expiryDate: '2026-07-01',
       category: 'Dairy',
       image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+      stockQuantity: 15,
     },
     {
       rfidUid: 'RFID002',
@@ -34,6 +35,7 @@ const seedInMemoryData = () => {
       expiryDate: '2026-06-15',
       category: 'Bakery',
       image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&auto=format&fit=crop&q=80',
+      stockQuantity: 20,
     },
     {
       rfidUid: 'RFID003',
@@ -43,6 +45,7 @@ const seedInMemoryData = () => {
       expiryDate: '2027-01-01',
       category: 'Grains',
       image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+      stockQuantity: 10,
     },
   ];
 
@@ -96,6 +99,7 @@ const seedInMemoryData = () => {
       { productName: 'Fresh Bread', price: 250, quantity: 2 },
     ],
     totalPaid: 950,
+    totalWeight: 1800,
     createdAt: new Date(Date.now() - 86400000),
     updatedAt: new Date(Date.now() - 86400000),
   } as any);
@@ -225,6 +229,7 @@ export const dbService = {
       expiryDate: productData.expiryDate,
       category: productData.category,
       image: productData.image,
+      stockQuantity: productData.stockQuantity !== undefined ? Number(productData.stockQuantity) : 10,
       createdAt: new Date(),
       updatedAt: new Date(),
     } as any;
@@ -240,6 +245,23 @@ export const dbService = {
     const idx = memProducts.findIndex((p) => p._id.toString() === id || p.id === id);
     if (idx !== -1) {
       memProducts.splice(idx, 1);
+      return true;
+    }
+    return false;
+  },
+
+  decrementProductStock: async (id: string, quantity: number): Promise<boolean> => {
+    if (!isInMemoryFallback) {
+      const res = await Product.findByIdAndUpdate(
+        id,
+        { $inc: { stockQuantity: -quantity } },
+        { new: true }
+      );
+      return res !== null;
+    }
+    const idx = memProducts.findIndex((p) => p._id.toString() === id || p.id === id);
+    if (idx !== -1) {
+      memProducts[idx].stockQuantity = Math.max(0, memProducts[idx].stockQuantity - quantity);
       return true;
     }
     return false;
@@ -266,6 +288,28 @@ export const dbService = {
       ...cart.toObject ? cart.toObject() : cart,
       items: populatedItems,
     } as any;
+  },
+
+  getCarts: async (): Promise<ICart[]> => {
+    if (!isInMemoryFallback) {
+      return await Cart.find({}).populate('items.product').sort({ updatedAt: -1 });
+    }
+    
+    return memCarts.map((cart) => {
+      const populatedItems = cart.items.map((item) => {
+        const productObj = memProducts.find(
+          (p) => p._id.toString() === (item.product as any).toString() || p.id === (item.product as any).toString()
+        );
+        return {
+          ...item,
+          product: productObj || item.product,
+        };
+      });
+      return {
+        ...cart.toObject ? cart.toObject() : cart,
+        items: populatedItems,
+      } as any;
+    }).sort((a: any, b: any) => b.updatedAt.getTime() - a.updatedAt.getTime());
   },
 
   saveCart: async (cartData: Partial<ICart>): Promise<ICart> => {
@@ -363,6 +407,7 @@ export const dbService = {
       email: txData.email,
       items: txData.items,
       totalPaid: txData.totalPaid,
+      totalWeight: txData.totalWeight || 0,
       paymentStatus: txData.paymentStatus || 'Success',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -393,6 +438,7 @@ export const seedMongoDatabase = async () => {
         expiryDate: '2026-07-01',
         category: 'Dairy',
         image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400&auto=format&fit=crop&q=80',
+        stockQuantity: 15,
       },
       {
         rfidUid: 'RFID002',
@@ -402,6 +448,7 @@ export const seedMongoDatabase = async () => {
         expiryDate: '2026-06-15',
         category: 'Bakery',
         image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&auto=format&fit=crop&q=80',
+        stockQuantity: 20,
       },
       {
         rfidUid: 'RFID003',
@@ -411,29 +458,36 @@ export const seedMongoDatabase = async () => {
         expiryDate: '2027-01-01',
         category: 'Grains',
         image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80',
+        stockQuantity: 10,
       },
     ];
 
     await Product.insertMany(mockProducts);
     
-    // Seed default Users
-    await User.create({
-      firebaseId: 'mock_uid_customer',
-      email: 'customer@smartcart.com',
-      name: 'Smart Customer',
-      role: 'customer',
-      budgetLimit: 2000,
-      budgetHistory: [{ date: new Date(), limit: 2000 }]
-    });
+    // Seed default Users safely if they do not exist
+    const customerExists = await User.findOne({ email: 'customer@smartcart.com' });
+    if (!customerExists) {
+      await User.create({
+        firebaseId: 'mock_uid_customer',
+        email: 'customer@smartcart.com',
+        name: 'Smart Customer',
+        role: 'customer',
+        budgetLimit: 2000,
+        budgetHistory: [{ date: new Date(), limit: 2000 }]
+      });
+    }
 
-    await User.create({
-      firebaseId: 'mock_uid_admin',
-      email: 'admin@smartcart.com',
-      name: 'Smart Admin',
-      role: 'admin',
-      budgetLimit: 0,
-      budgetHistory: []
-    });
+    const adminExists = await User.findOne({ email: 'admin@smartcart.com' });
+    if (!adminExists) {
+      await User.create({
+        firebaseId: 'mock_uid_admin',
+        email: 'admin@smartcart.com',
+        name: 'Smart Admin',
+        role: 'admin',
+        budgetLimit: 0,
+        budgetHistory: []
+      });
+    }
 
     console.log('✨ MongoDB seeded successfully!');
   } catch (err: any) {

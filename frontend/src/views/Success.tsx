@@ -41,6 +41,7 @@ const Success: React.FC = () => {
     transactionId: `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`,
     orderNumber: `ORD-2026-${Math.floor(100 + Math.random() * 900)}`,
     totalPaid: 950,
+    totalWeight: 1800,
     createdAt: new Date().toISOString(),
     customerName: 'Smart Customer',
     paymentMethod: 'Credit Card',
@@ -63,6 +64,7 @@ const Success: React.FC = () => {
       `Date           : ${new Date(receipt.createdAt).toLocaleString()}`,
       `Customer Name  : ${receipt.customerName}`,
       `Payment Method : ${receipt.paymentMethod || 'Simulated Card'}`,
+      `Total Weight   : ${receipt.totalWeight || 0}g`,
       `Payment Status : Success`,
       border,
       "PRODUCTS PURCHASED:",
@@ -187,6 +189,10 @@ const Success: React.FC = () => {
           <div className="flex justify-between text-slate-400">
             <span>Payment Method:</span>
             <span className="text-theme-text font-bold">{receipt.paymentMethod || 'Simulated Card'}</span>
+          </div>
+          <div className="flex justify-between text-slate-400">
+            <span>Total Measured Weight:</span>
+            <span className="text-theme-text font-bold">{receipt.totalWeight || 0}g</span>
           </div>
           <div className="flex justify-between text-slate-400">
             <span>Payment Status:</span>

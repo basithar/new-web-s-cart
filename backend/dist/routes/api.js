@@ -24,6 +24,10 @@ router.get('/cart/:cartId', cartController_1.getCart);
 router.post('/cart/quantity', cartController_1.updateItemQuantity);
 router.post('/cart/budget', cartController_1.setCartBudget);
 router.post('/cart/weight-update', securityController_1.updatePhysicalWeight);
+router.post('/cart/start', cartController_1.startShoppingSession);
+router.post('/cart/stop', cartController_1.stopShoppingSession);
+router.post('/cart/resume', cartController_1.resumeShoppingSession);
+router.get('/shopping-sessions', cartController_1.getAllCarts);
 // --- RFID Hardware / Scan Simulator Routes ---
 router.post('/rfid/scan', rfidController_1.scanRfidCard);
 router.get('/rfid/history', rfidController_1.getScanHistory);

@@ -24,24 +24,31 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
-const CartSchema = new mongoose_1.Schema({
-    cartId: { type: String, required: true, unique: true },
-    userId: { type: String }, // Firebase ID or null for guest
-    items: [
-        {
-            product: { type: mongoose_1.Schema.Types.ObjectId, ref: 'Product', required: true },
-            quantity: { type: Number, required: true, default: 1 },
-        },
-    ],
-    budget: { type: Number, default: 0 },
-    totalAmount: { type: Number, default: 0 },
-    expectedWeight: { type: Number, default: 0 },
-    physicalWeight: { type: Number, default: 0 },
-    weightMismatch: { type: Boolean, default: false },
-    status: {
+// MongoDB Database eke Blueprint (Schema) eka
+const ProductSchema = new mongoose_1.Schema({
+    name: {
         type: String,
-        enum: ['pending', 'active', 'stopped', 'checkout', 'completed'],
-        default: 'active',
+        required: true
     },
-}, { timestamps: true });
-exports.default = mongoose_1.default.model('Cart', CartSchema, 'shopping_sessions');
+    rfidUid: {
+        type: String,
+        required: true,
+        unique: true // Eka RFID tag ekak deparak add wenna bari wenna
+    },
+    price: {
+        type: Number,
+        required: true
+    },
+    weight: {
+        type: Number,
+        required: true
+    },
+    expiryDate: {
+        type: Date,
+        required: true
+    }
+}, {
+    timestamps: true // Data eka add karapu welawa (createdAt/updatedAt) auto save wenawa
+});
+// Model eka export kireema
+exports.default = mongoose_1.default.model('Product', ProductSchema);

@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   Home, Wallet, ShoppingCart, CreditCard, User, LogOut, 
-  LayoutDashboard, Settings, Users, Receipt, Radio, Cpu, Server,
+  LayoutDashboard, Settings, Users, Receipt, Radio, Cpu, Server, Clock,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
     { name: 'Product Management', path: '/admin/products', icon: Settings },
     { name: 'User Management', path: '/admin/users', icon: Users },
     { name: 'Transactions', path: '/admin/transactions', icon: Receipt },
+    { name: 'Shopping Sessions', path: '/admin/sessions', icon: Clock },
     { name: 'RFID Management', path: '/admin/rfid', icon: Radio },
     { name: 'ESP32 Monitoring', path: '/admin/esp32', icon: Cpu },
     { name: 'Database Management', path: '/admin/db', icon: Server },

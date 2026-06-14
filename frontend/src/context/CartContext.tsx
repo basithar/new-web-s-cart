@@ -23,7 +23,7 @@ export interface CartData {
   expectedWeight: number;
   physicalWeight: number;
   weightMismatch: boolean;
-  status: 'active' | 'checkout' | 'completed';
+  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed';
 }
 
 export interface ESP32Status {
@@ -65,6 +65,9 @@ interface CartContextType {
   ) => Promise<any>;
   simulateScan: (uid: string) => Promise<void>;
   simulateWeightUpdate: (weight: number) => Promise<void>;
+  startShopping: () => Promise<void>;
+  stopShopping: (physicalWeight: number) => Promise<void>;
+  resumeShopping: () => Promise<void>;
   fetchScanHistory: () => Promise<void>;
   fetchEsp32Status: () => Promise<void>;
   clearActiveReceipt: () => void;
@@ -230,6 +233,42 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const startShopping = async () => {
+    try {
+      const response = await axios.post(`${API_URL}/cart/start`, { cartId });
+      if (response.data.success) {
+        setCart(response.data.cart);
+        triggerLocalNotification('success', 'Session Started', 'Ready to scan items!');
+      }
+    } catch (err: any) {
+      triggerLocalNotification('error', 'Failed to start shopping', err.response?.data?.error || err.message);
+    }
+  };
+
+  const stopShopping = async (physicalWeight: number) => {
+    try {
+      const response = await axios.post(`${API_URL}/cart/stop`, { cartId, physicalWeight });
+      if (response.data.success) {
+        setCart(response.data.cart);
+        triggerLocalNotification('info', 'Session Stopped', 'Weight verification checks complete.');
+      }
+    } catch (err: any) {
+      triggerLocalNotification('error', 'Failed to stop shopping', err.response?.data?.error || err.message);
+    }
+  };
+
+  const resumeShopping = async () => {
+    try {
+      const response = await axios.post(`${API_URL}/cart/resume`, { cartId });
+      if (response.data.success) {
+        setCart(response.data.cart);
+        triggerLocalNotification('success', 'Session Resumed', 'RFID scanning enabled.');
+      }
+    } catch (err: any) {
+      triggerLocalNotification('error', 'Failed to resume shopping', err.response?.data?.error || err.message);
+    }
+  };
+
   const clearActiveReceipt = () => {
     setActiveReceipt(null);
   };
@@ -249,6 +288,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         processCheckout,
         simulateScan,
         simulateWeightUpdate,
+        startShopping,
+        stopShopping,
+        resumeShopping,
         fetchScanHistory,
         fetchEsp32Status,
         clearActiveReceipt,

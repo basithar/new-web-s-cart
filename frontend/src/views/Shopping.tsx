@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   ShoppingBag, Trash2, Plus, Minus, Scale, Wallet, 
-  ArrowRight, Radio, Search
+  ArrowRight, Radio, Search, Lock, Play, Square, CheckCircle, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 
@@ -12,7 +12,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const Shopping: React.FC = () => {
   const navigate = useNavigate();
   const { 
-    cart, loading, updateItemQuantity, simulateScan, simulateWeightUpdate 
+    cart, loading, updateItemQuantity, simulateScan, simulateWeightUpdate,
+    startShopping, stopShopping, resumeShopping
   } = useCart();
 
   const [products, setProducts] = useState<any[]>([]);
@@ -43,14 +44,23 @@ const Shopping: React.FC = () => {
   const handleSimulateMismatch = async () => {
     const wt = Number(mismatchWeight);
     if (!isNaN(wt) && wt >= 0) {
-      await simulateWeightUpdate(wt);
+      if (cart?.status === 'active') {
+        await simulateWeightUpdate(wt);
+      } else {
+        // If stopped, update physical weight via stopShopping call to trigger verification checks
+        await stopShopping(wt);
+      }
       setMismatchWeight('');
     }
   };
 
   const handleClearMismatch = async () => {
     if (cart) {
-      await simulateWeightUpdate(cart.expectedWeight);
+      if (cart.status === 'active') {
+        await simulateWeightUpdate(cart.expectedWeight);
+      } else {
+        await stopShopping(cart.expectedWeight);
+      }
     }
   };
 
@@ -66,11 +76,35 @@ const Shopping: React.FC = () => {
     );
   }
 
-  const items = cart?.items || [];
-  const total = cart?.totalAmount || 0;
-  const budget = cart?.budget || 0;
+  // Welcome/Start Session layout when cart is null, pending, or completed
+  if (!cart || (cart.status !== 'active' && cart.status !== 'stopped')) {
+    return (
+      <div className="max-w-md mx-auto text-center space-y-6 pt-12 text-theme-text transition-colors duration-300">
+        <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto shadow-md">
+          <ShoppingBag className="w-8 h-8 text-emerald-500 animate-bounce-slow" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-extrabold text-theme-text">Start Kiosk Shopping Session</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto leading-relaxed">
+            Initialize your smart shopping session below. This enables the HX711 load cell weight telemetry and MFRC522 RFID tag scanner.
+          </p>
+        </div>
+        <button
+          onClick={() => startShopping()}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+        >
+          <Play className="w-4 h-4 fill-white" /> Start Shopping Session
+        </button>
+      </div>
+    );
+  }
+
+  const items = cart.items || [];
+  const total = cart.totalAmount || 0;
+  const budget = cart.budget || 0;
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
+  const isStopped = cart.status === 'stopped';
 
   const filteredCatalog = products.filter((p) =>
     p.productName.toLowerCase().includes(catalogSearch.toLowerCase()) ||
@@ -80,7 +114,70 @@ const Shopping: React.FC = () => {
   return (
     <div className="space-y-6 text-theme-text transition-colors duration-300">
       
-      {/* 1. Dashboard Cards (Budget KPI Widgets) */}
+      {/* 1. Shopping Session Banner (Telemetry Notifications) */}
+      <div className={`p-5 rounded-3xl border transition-all ${
+        isStopped 
+          ? (cart.weightMismatch 
+              ? 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400' 
+              : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400')
+          : 'bg-blue-500/5 border-blue-500/20 text-blue-600 dark:text-blue-400'
+      }`}>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <div className="flex items-center gap-3.5 flex-col sm:flex-row">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shadow-md ${
+              isStopped 
+                ? (cart.weightMismatch ? 'bg-rose-650 text-white' : 'bg-emerald-600 text-white')
+                : 'bg-blue-600 text-white animate-pulse'
+            }`}>
+              {isStopped ? (
+                cart.weightMismatch ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />
+              ) : (
+                <Radio className="w-5 h-5" />
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-extrabold text-sm text-theme-text uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1.5">
+                Session Status: {isStopped ? (cart.weightMismatch ? 'Weight Mismatch' : 'VERIFIED') : 'Shopping Active'}
+              </h3>
+              <p className="text-[11px] opacity-80 mt-1 font-medium leading-normal">
+                {isStopped ? (
+                  cart.weightMismatch 
+                    ? 'Weight mismatch detected. Please rescan or remove unscanned items to continue.'
+                    : 'Cart weight verified successfully. You are cleared to proceed to checkout!'
+                ) : (
+                  'RFID scanner and scale are online. Drop items in cart to automatically register them.'
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 shrink-0">
+            {isStopped ? (
+              <button
+                onClick={() => resumeShopping()}
+                className="px-4 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs font-bold text-theme-text hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Resume Shopping
+              </button>
+            ) : (
+              <button
+                onClick={() => stopShopping(cart.physicalWeight)}
+                disabled={items.length === 0}
+                className={`px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md transition-all flex items-center gap-1 active:scale-95 ${
+                  items.length === 0 
+                    ? 'bg-slate-500 opacity-50 cursor-not-allowed' 
+                    : 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/10'
+                }`}
+              >
+                <Square className="w-3.5 h-3.5 fill-white" /> Lock & Stop Shopping
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Dashboard Cards (Budget KPI Widgets) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Current Budget */}
         <div className="glass-panel rounded-2xl p-5 text-left flex items-center justify-between border-l-4 border-l-emerald-500 bg-theme-card border-theme-border">
@@ -114,7 +211,7 @@ const Shopping: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Budget Section (Progress & Warnings) */}
+      {/* 3. Budget Section (Progress & Warnings) */}
       {budget > 0 && (
         <div className="glass-panel rounded-2xl p-4 space-y-2 bg-theme-card border-theme-border">
           <div className="flex justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -130,7 +227,6 @@ const Shopping: React.FC = () => {
             ></div>
           </div>
           
-          {/* Warn alerts */}
           {budgetPercent >= 100 ? (
             <p className="text-[10px] font-bold text-rose-500 animate-pulse">
               ⚠️ Alert: Spending has exceeded your budget limit! Consider removing items before checking out.
@@ -143,14 +239,21 @@ const Shopping: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Shopping Section (Cart Items & Controllers) */}
+      {/* 4. Shopping Section (Cart Items & Controllers) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* Left Columns: Cart and scanning */}
+        {/* Left Columns: Cart items */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* Shopping items list */}
-          <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border">
+          <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border relative overflow-hidden">
+            {isStopped && (
+              <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/20 backdrop-blur-[0.5px] z-10 flex items-center justify-center pointer-events-none select-none">
+                <div className="px-3.5 py-1.5 rounded-full bg-slate-900/80 dark:bg-slate-800/95 border border-slate-700 text-white font-extrabold text-[9px] uppercase tracking-widest flex items-center gap-1.5 shadow-md">
+                  <Lock className="w-3 h-3 text-amber-500" /> Session Locked • stopped
+                </div>
+              </div>
+            )}
+
             <h4 className="font-extrabold text-theme-text mb-6 flex items-center gap-2">
               <ShoppingBag className="text-emerald-500" /> Shopping Cart Items
             </h4>
@@ -195,15 +298,21 @@ const Shopping: React.FC = () => {
                           <td className="py-3 text-center font-bold text-theme-text">
                             <div className="flex items-center justify-center gap-2">
                               <button
+                                disabled={isStopped}
                                 onClick={() => updateItemQuantity(prod._id, item.quantity - 1)}
-                                className="w-5 h-5 rounded-lg border border-theme-border flex items-center justify-center text-slate-450 hover:text-emerald-500 hover:border-emerald-500 transition-colors"
+                                className={`w-5 h-5 rounded-lg border border-theme-border flex items-center justify-center text-slate-450 hover:text-emerald-500 hover:border-emerald-500 transition-colors ${
+                                  isStopped ? 'opacity-40 cursor-not-allowed' : ''
+                                }`}
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
                               <span className="w-4 text-center">{item.quantity}</span>
                               <button
+                                disabled={isStopped}
                                 onClick={() => updateItemQuantity(prod._id, item.quantity + 1)}
-                                className="w-5 h-5 rounded-lg border border-theme-border flex items-center justify-center text-slate-455 hover:text-emerald-500 hover:border-emerald-500 transition-colors"
+                                className={`w-5 h-5 rounded-lg border border-theme-border flex items-center justify-center text-slate-455 hover:text-emerald-500 hover:border-emerald-500 transition-colors ${
+                                  isStopped ? 'opacity-40 cursor-not-allowed' : ''
+                                }`}
                               >
                                 <Plus className="w-3 h-3" />
                               </button>
@@ -214,8 +323,11 @@ const Shopping: React.FC = () => {
                           </td>
                           <td className="py-3 text-right">
                             <button
+                              disabled={isStopped}
                               onClick={() => updateItemQuantity(prod._id, 0)}
-                              className="text-slate-400 hover:text-rose-500 transition-colors p-1"
+                              className={`text-slate-400 hover:text-rose-500 transition-colors p-1 ${
+                                isStopped ? 'opacity-40 cursor-not-allowed' : ''
+                              }`}
                               title="Delete Item"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -230,7 +342,7 @@ const Shopping: React.FC = () => {
             )}
 
             {/* Check out Trigger */}
-            {items.length > 0 && (
+            {items.length > 0 && isStopped && !cart.weightMismatch && (
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => navigate('/checkout')}
@@ -248,13 +360,22 @@ const Shopping: React.FC = () => {
         <div className="space-y-6">
           
           {/* Method B: RFID Scanner Simulator */}
-          <div className="glass-panel rounded-3xl p-5 space-y-4 bg-theme-card border-theme-border">
+          <div className="glass-panel rounded-3xl p-5 space-y-4 bg-theme-card border-theme-border relative overflow-hidden">
+            {isStopped && (
+              <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/20 backdrop-blur-[0.5px] z-10 flex items-center justify-center pointer-events-none select-none">
+                <div className="px-3 py-1 rounded-full bg-slate-900/85 text-white font-extrabold text-[8px] uppercase tracking-widest flex items-center gap-1 border border-slate-700">
+                  <Lock className="w-2.5 h-2.5 text-amber-500" /> Locked
+                </div>
+              </div>
+            )}
+
             <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Radio className="w-4 h-4 text-emerald-500" /> RFID Scan Simulator
             </h4>
             
             <form onSubmit={handleManualScan} className="flex gap-2">
               <input
+                disabled={isStopped}
                 type="text"
                 placeholder="Enter Tag UID (e.g. RFID001)..."
                 value={manualRfid}
@@ -262,8 +383,9 @@ const Shopping: React.FC = () => {
                 className="flex-1 px-3 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs text-theme-text focus:outline-none focus:border-emerald-500 font-mono"
               />
               <button
+                disabled={isStopped}
                 type="submit"
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md active:scale-95"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md active:scale-95 disabled:opacity-50"
               >
                 Scan
               </button>
@@ -271,7 +393,15 @@ const Shopping: React.FC = () => {
           </div>
 
           {/* Method A: Supermarket Catalog Select */}
-          <div className="glass-panel rounded-3xl p-5 space-y-4 bg-theme-card border-theme-border">
+          <div className="glass-panel rounded-3xl p-5 space-y-4 bg-theme-card border-theme-border relative overflow-hidden">
+            {isStopped && (
+              <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-950/20 backdrop-blur-[0.5px] z-10 flex items-center justify-center pointer-events-none select-none">
+                <div className="px-3 py-1 rounded-full bg-slate-900/85 text-white font-extrabold text-[8px] uppercase tracking-widest flex items-center gap-1 border border-slate-700">
+                  <Lock className="w-2.5 h-2.5 text-amber-500" /> Locked
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1">
               <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider">
                 Store Catalog Select
@@ -282,6 +412,7 @@ const Shopping: React.FC = () => {
             <div className="relative">
               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
               <input
+                disabled={isStopped}
                 type="text"
                 placeholder="Search catalog items..."
                 value={catalogSearch}
@@ -308,10 +439,10 @@ const Shopping: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Simulate scan trigger on click */}
                   <button
+                    disabled={isStopped}
                     onClick={() => simulateScan(p.rfidUid)}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white font-bold text-[10px] transition-all shrink-0 active:scale-95"
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white font-bold text-[10px] transition-all shrink-0 active:scale-95 disabled:opacity-50"
                   >
                     Add
                   </button>
@@ -331,12 +462,12 @@ const Shopping: React.FC = () => {
             <div className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/20 border border-theme-border space-y-3 text-xs">
               <div className="flex justify-between font-semibold text-slate-400">
                 <span>Expected Weight:</span>
-                <span className="text-theme-text font-bold">{cart?.expectedWeight || 0}g</span>
+                <span className="text-theme-text font-bold">{cart.expectedWeight || 0}g</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-400">
                 <span>Scale Telemetry:</span>
-                <span className={`font-bold ${cart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
-                  {cart?.physicalWeight || 0}g
+                <span className={`font-bold ${cart.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
+                  {cart.physicalWeight || 0}g
                 </span>
               </div>
               
@@ -356,7 +487,7 @@ const Shopping: React.FC = () => {
                 </button>
               </div>
 
-              {cart?.weightMismatch && (
+              {cart.weightMismatch && (
                 <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] text-rose-500 font-bold space-y-1">
                   <p>⚠️ Warning: Weight mismatch alert active!</p>
                   <button

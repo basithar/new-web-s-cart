@@ -21,6 +21,7 @@ const Admin: React.FC = () => {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [rfidScans, setRfidScans] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -33,6 +34,7 @@ const Admin: React.FC = () => {
   const [expiryDate, setExpiryDate] = useState('2026-12-31');
   const [category, setCategory] = useState('Dairy');
   const [image, setImage] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('10');
 
   // CSV State
   const [csvText, setCsvText] = useState('');
@@ -41,17 +43,19 @@ const Admin: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [resProd, resTx, resUsers, resScans] = await Promise.all([
+      const [resProd, resTx, resUsers, resScans, resSessions] = await Promise.all([
         axios.get(`${API_URL}/products`),
         axios.get(`${API_URL}/transactions`),
-        axios.get(`${API_URL}/users`).catch(() => ({ data: [] })), // Handle if route is missing in older server build
-        axios.get(`${API_URL}/rfid/history`).catch(() => ({ data: [] }))
+        axios.get(`${API_URL}/users`).catch(() => ({ data: [] })),
+        axios.get(`${API_URL}/rfid/history`).catch(() => ({ data: [] })),
+        axios.get(`${API_URL}/shopping-sessions`).catch(() => ({ data: [] }))
       ]);
       
       setProducts(resProd.data);
       setTransactions(resTx.data);
       setUsers(resUsers.data);
       setRfidScans(resScans.data);
+      setSessions(resSessions.data);
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
     } finally {
@@ -75,6 +79,7 @@ const Admin: React.FC = () => {
       expiryDate,
       category,
       image: image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300',
+      stockQuantity: Number(stockQuantity),
     };
 
     try {
@@ -96,6 +101,7 @@ const Admin: React.FC = () => {
     setExpiryDate(p.expiryDate);
     setCategory(p.category);
     setImage(p.image);
+    setStockQuantity(p.stockQuantity !== undefined ? p.stockQuantity.toString() : '10');
     // Switch to products page if not there
     if (currentPath !== '/admin/products') {
       navigate('/admin/products');
@@ -162,6 +168,7 @@ const Admin: React.FC = () => {
     setExpiryDate('2026-12-31');
     setCategory('Dairy');
     setImage('');
+    setStockQuantity('10');
   };
 
   const generateMockRfid = () => {
@@ -534,6 +541,19 @@ const Admin: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-bold text-slate-400 tracking-wide">Stock Quantity</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="10"
+                    value={stockQuantity}
+                    onChange={(e) => setStockQuantity(e.target.value)}
+                    className="glass-input text-xs py-2 px-3"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <label className="text-[9px] font-bold text-slate-400 tracking-wide">Product Image URL</label>
                   <input
                     type="url"
@@ -808,6 +828,78 @@ const Admin: React.FC = () => {
                   Sync Collections
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAGE 7: SHOPPING SESSIONS LOG */}
+      {currentPath === '/admin/sessions' && (
+        <div className="space-y-6 text-left">
+          <div>
+            <h2 className="text-xl font-extrabold flex items-center gap-2">
+              <Clock className="text-emerald-500" /> Kiosk Shopping Sessions Log
+            </h2>
+            <p className="text-xs text-slate-400">Live and completed shopper kiosk session tracking from MongoDB.</p>
+          </div>
+
+          <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-theme-border text-slate-400 font-bold pb-2 uppercase tracking-wide">
+                    <th className="pb-3">Session / Cart ID</th>
+                    <th className="pb-3">Items list</th>
+                    <th className="pb-3 text-right">Budget Limit</th>
+                    <th className="pb-3 text-right">Total Bill</th>
+                    <th className="pb-3 text-center">Expected Weight</th>
+                    <th className="pb-3 text-center">Physical Weight</th>
+                    <th className="pb-3 text-center">Status</th>
+                    <th className="pb-3 text-right">Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-theme-border/20">
+                  {sessions.map((sess) => (
+                    <tr key={sess._id} className="hover:bg-slate-100/10">
+                      <td className="py-3.5 font-bold text-theme-text font-mono">{sess.cartId}</td>
+                      <td className="py-3.5 text-slate-500 font-medium leading-normal max-w-[220px] truncate">
+                        {sess.items && sess.items.length > 0 
+                          ? sess.items.map((it: any) => `${it.product?.productName || 'Product'} (x${it.quantity})`).join(', ') 
+                          : <span className="italic text-slate-400">Empty Cart</span>
+                        }
+                      </td>
+                      <td className="py-3.5 text-right font-semibold text-slate-500">Rs. {sess.budget?.toLocaleString() || 0}</td>
+                      <td className="py-3.5 text-right font-extrabold text-theme-text">Rs. {sess.totalAmount?.toLocaleString() || 0}</td>
+                      <td className="py-3.5 text-center font-semibold text-slate-550">{sess.expectedWeight || 0}g</td>
+                      <td className="py-3.5 text-center font-bold">
+                        <span className={sess.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-slate-500'}>
+                          {sess.physicalWeight || 0}g
+                        </span>
+                      </td>
+                      <td className="py-3.5 text-center">
+                        <span className={`text-[8px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full ${
+                          sess.status === 'completed'
+                            ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/20'
+                            : sess.status === 'stopped'
+                              ? 'bg-amber-500/15 text-amber-500 border border-amber-500/20'
+                              : 'bg-blue-500/15 text-blue-500 border border-blue-500/20'
+                        }`}>
+                          {sess.status || 'active'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 text-right text-slate-400 font-semibold font-mono">
+                        {new Date(sess.updatedAt).toLocaleDateString()}<br/>
+                        {new Date(sess.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                    </tr>
+                  ))}
+                  {sessions.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-slate-400 font-medium">No shopping sessions active or completed.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
