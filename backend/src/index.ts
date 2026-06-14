@@ -42,7 +42,7 @@ const startServer = async () => {
   const dbConnected = await connectDB();
   
   if (dbConnected) {
-    // Seed initial mock items if using MongoDB
+    // Seed initial mock items if using Firebase Firestore
     await seedMongoDatabase();
   }
 
@@ -55,7 +55,7 @@ const startServer = async () => {
     console.log(`\n======================================================`);
     console.log(`🚀 Server running on: http://localhost:${PORT}`);
     console.log(`🏥 Health check at:  http://localhost:${PORT}/health`);
-    console.log(`💾 Mode:             ${dbConnected ? 'MongoDB Live' : 'In-Memory Mock Fallback'}`);
+    console.log(`💾 Mode:             ${dbConnected ? 'Firebase Firestore Live' : 'In-Memory Mock Fallback'}`);
     console.log(`======================================================\n`);
   });
 };
