@@ -65,8 +65,7 @@ interface CartContextType {
       paymentStatus?: string;
     }
   ) => Promise<any>;
-  simulateScan: (uid: string) => Promise<void>;
-  simulateWeightUpdate: (weight: number) => Promise<void>;
+
   startShopping: () => Promise<void>;
   stopShopping: (physicalWeight: number) => Promise<void>;
   resumeShopping: () => Promise<void>;
@@ -230,23 +229,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const simulateScan = async (uid: string) => {
-    try {
-      await axios.post(`${API_URL}/rfid/scan`, { cartId, uid });
-      await fetchCartDetails(cartId);
-    } catch (err: any) {
-      triggerLocalNotification('error', 'RFID Scan Failed', err.response?.data?.error || err.message);
-    }
-  };
 
-  const simulateWeightUpdate = async (physicalWeight: number) => {
-    try {
-      await axios.post(`${API_URL}/cart/weight-update`, { cartId, physicalWeight });
-      await fetchCartDetails(cartId);
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const startShopping = async () => {
     try {
@@ -301,8 +284,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateBudget,
         updateItemQuantity,
         processCheckout,
-        simulateScan,
-        simulateWeightUpdate,
+
         startShopping,
         stopShopping,
         resumeShopping,

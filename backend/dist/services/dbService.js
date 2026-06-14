@@ -342,7 +342,7 @@ const seedMongoDatabase = async () => {
         console.log('✨ Firestore database seeding checks completed successfully!');
     }
     catch (err) {
-        console.error('❌ Failed to seed MongoDB database:', err.message);
+        console.error('❌ Failed to seed Firebase database:', err.message);
     }
 };
 exports.seedMongoDatabase = seedMongoDatabase;
