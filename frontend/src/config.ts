@@ -13,5 +13,5 @@ const getBackendHost = () => {
   return import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL?.replace(/\/api\/?$/, '') || window.location.origin;
 };
 
-export const SOCKET_URL = getBackendHost();
+export const SOCKET_URL = getBackendHost().replace(/\/$/, '');
 export const API_URL = `${SOCKET_URL}/api`;
