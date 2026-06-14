@@ -1,0 +1,506 @@
+openapi: 3.0.3
+info:
+  title: IoT Smart Shopping Cart Retail API
+  description: API documentation for the university demonstration IoT Smart Shopping Cart platform. Uses Firebase Firestore, Firebase Storage, Firebase Auth, and ESP32 telemetry integration.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api
+    description: Local Development Server
+paths:
+  /auth/register:
+    post:
+      summary: Register or save user profile
+      description: Saves a user profile to Firestore following successful Firebase client-side Authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - firebaseId
+                - email
+                - name
+              properties:
+                firebaseId:
+                  type: string
+                  description: Firebase Authentication UID
+                email:
+                  type: string
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [customer, admin]
+                  default: customer
+      responses:
+        '201':
+          description: User registered successfully
+        '200':
+          description: User already registered
+        '400':
+          description: Missing required fields
+        '500':
+          description: Server error
+
+  /auth/login:
+    post:
+      summary: User login & auto-registration
+      description: Logs in a user. If the profile doesn't exist in Firestore, it is automatically created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - firebaseId
+              properties:
+                firebaseId:
+                  type: string
+                email:
+                  type: string
+                name:
+                  type: string
+                role:
+                  type: string
+      responses:
+        '200':
+          description: Logged in successfully
+        '400':
+          description: Firebase UID is required
+
+  /auth/budget:
+    post:
+      summary: Update shopper's monthly budget limit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - firebaseId
+                - budgetLimit
+              properties:
+                firebaseId:
+                  type: string
+                budgetLimit:
+                  type: number
+      responses:
+        '200':
+          description: Budget updated successfully
+        '404':
+          description: User profile not found
+
+  /users:
+    get:
+      summary: Get all user profiles (Admin)
+      responses:
+        '200':
+          description: Array of registered users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /products:
+    get:
+      summary: Retrieve the product catalog
+      responses:
+        '200':
+          description: Catalog list of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+    post:
+      summary: Register a new product (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: Product registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+
+  /products/{id}:
+    put:
+      summary: Edit catalog product (Admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: Product updated
+        '404':
+          description: Product not found
+    delete:
+      summary: Delete catalog product (Admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Product not found
+
+  /products/bulk:
+    post:
+      summary: Bulk import products (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - products
+              properties:
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: Bulk import completed
+
+  /cart/{cartId}:
+    get:
+      summary: Fetch active shopping cart
+      parameters:
+        - name: cartId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current cart session status
+
+  /cart/quantity:
+    post:
+      summary: Adjust item count in active cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cartId
+                - productId
+                - quantity
+              properties:
+                cartId:
+                  type: string
+                productId:
+                  type: string
+                quantity:
+                  type: integer
+      responses:
+        '200':
+          description: Quantity updated
+
+  /cart/budget:
+    post:
+      summary: Set session budget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cartId
+                - budget
+              properties:
+                cartId:
+                  type: string
+                budget:
+                  type: number
+      responses:
+        '200':
+          description: Session budget updated
+
+  /cart/weight-update:
+    post:
+      summary: Push load cell weight update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cartId
+              properties:
+                cartId:
+                  type: string
+                physicalWeight:
+                  type: number
+                weight:
+                  type: number
+      responses:
+        '200':
+          description: Cart weights recalculated and mismatch status flag set
+
+  /cart/start:
+    post:
+      summary: Start a shopping session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cartId:
+                  type: string
+      responses:
+        '200':
+          description: Cart session initialized and status set to active
+
+  /cart/stop:
+    post:
+      summary: Stop a shopping session
+      description: Pauses active rfid scans and triggers final verification check.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - physicalWeight
+              properties:
+                cartId:
+                  type: string
+                physicalWeight:
+                  type: number
+      responses:
+        '200':
+          description: Session marked stopped
+
+  /cart/resume:
+    post:
+      summary: Resume stopped session
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cartId:
+                  type: string
+      responses:
+        '200':
+          description: Active session restored
+
+  /shopping-sessions:
+    get:
+      summary: List all shopping sessions
+      responses:
+        '200':
+          description: List of session carts
+
+  /rfid/scan:
+    post:
+      summary: Trigger RFID product scan (Hardware/Simulator input)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - uid
+              properties:
+                uid:
+                  type: string
+                  description: RFID card UID
+                cartId:
+                  type: string
+      responses:
+        '200':
+          description: Product found and successfully appended to cart
+        '404':
+          description: RFID tag unrecognized
+        '400':
+          description: Active shopping session not found
+
+  /cart/remove:
+    post:
+      summary: Remove RFID item from active cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - uid
+              properties:
+                uid:
+                  type: string
+                cartId:
+                  type: string
+      responses:
+        '200':
+          description: Item removed successfully
+
+  /rfid/history:
+    get:
+      summary: View RFID Scan simulator history log
+      responses:
+        '200':
+          description: List of historical RFID scans
+
+  /esp32/heartbeat:
+    post:
+      summary: ESP32 client telemetry ping
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cartId
+              properties:
+                cartId:
+                  type: string
+                wifiStatus:
+                  type: string
+                rssi:
+                  type: number
+                weight:
+                  type: number
+      responses:
+        '200':
+          description: Heartbeat recorded
+
+  /esp32/status:
+    get:
+      summary: Fetch current hardware status
+      responses:
+        '200':
+          description: Current ESP32 signal strength and weight telemetry
+
+  /checkout:
+    post:
+      summary: Finalize payment checkout
+      description: Validates weights, deducts inventory, creates transactions/sessions, and clears cart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customerName
+                - phone
+                - email
+              properties:
+                customerName:
+                  type: string
+                phone:
+                  type: string
+                email:
+                  type: string
+                cartId:
+                  type: string
+                transactionId:
+                  type: string
+                orderNumber:
+                  type: string
+                paymentMethod:
+                  type: string
+                paymentStatus:
+                  type: string
+      responses:
+        '200':
+          description: Payment successful, checkout completed
+        '400':
+          description: Weight mismatch or empty cart error
+
+  /transactions:
+    get:
+      summary: Fetch completed transactions
+      parameters:
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction history list
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        _id:
+          type: string
+        uid:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        weight:
+          type: number
+        stock:
+          type: integer
+        category:
+          type: string
+        imageUrl:
+          type: string
+    ProductInput:
+      type: object
+      required:
+        - uid
+        - name
+        - price
+        - weight
+        - stock
+        - category
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        weight:
+          type: number
+        stock:
+          type: integer
+        category:
+          type: string
+        imageUrl:
+          type: string
