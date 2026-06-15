@@ -3,7 +3,7 @@ import { registerUser, loginUser, updateBudget, getUsers } from '../controllers/
 import { getProducts, createProduct, updateProduct, deleteProduct, bulkImportProducts } from '../controllers/productController';
 import { getCart, updateItemQuantity, setCartBudget, startShoppingSession, stopShoppingSession, getAllCarts, resumeShoppingSession, removeItemFromCart } from '../controllers/cartController';
 import { scanRfidCard, getScanHistory } from '../controllers/rfidController';
-import { postHeartbeat, getStatus } from '../controllers/esp32Controller';
+import { postHeartbeat, getStatus, postHeartbeatLegacy, testScanLegacy } from '../controllers/esp32Controller';
 import { updatePhysicalWeight } from '../controllers/securityController';
 import { processPayment, getTransactions } from '../controllers/paymentController';
 
@@ -36,10 +36,12 @@ router.get('/shopping-sessions', getAllCarts);
 router.post('/rfid/scan', scanRfidCard);
 router.post('/cart/remove', removeItemFromCart);
 router.get('/rfid/history', getScanHistory);
+router.post('/test-scan', testScanLegacy);
 
 // --- ESP32 Telemetry Status Routes ---
 router.post('/esp32/heartbeat', postHeartbeat);
 router.get('/esp32/status', getStatus);
+router.post('/heartbeat', postHeartbeatLegacy);
 
 // --- Payment & Transaction Checkout Routes ---
 router.post('/payment/process', processPayment);

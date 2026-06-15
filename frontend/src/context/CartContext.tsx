@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
+import { rtdb } from '../firebase';
+import { ref, onValue } from 'firebase/database';
 
 export interface CartData {
   cartId: string;
@@ -144,6 +146,25 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(interval);
   }, []);
 
+  // Real-time updates via Firebase Realtime Database status changes
+  useEffect(() => {
+    if (!rtdb) return;
+    const statusRef = ref(rtdb, 'esp32Status');
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        console.log('🔥 ESP32 Status updated via RTDB:', val);
+        setEsp32Status((prev: any) => ({
+          ...prev,
+          ...val
+        }));
+        fetchScanHistory(); // refresh logs if status changes
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Real-time update listeners via Socket.IO
   useEffect(() => {
     if (!socket) return;
@@ -166,10 +187,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchEsp32Status(); // Sync ESP32 status on scan updates
     });
 
+    socket.on('esp32_status', (statusData: any) => {
+      console.log('⚡ ESP32 status updated via Socket.IO:', statusData);
+      setEsp32Status((prev: any) => ({
+        ...prev,
+        ...statusData
+      }));
+    });
+
     return () => {
       socket.off('connect', handleConnect);
       socket.emit('leave_cart', cartId);
       socket.off('cart_updated');
+      socket.off('esp32_status');
     };
   }, [socket, cartId]);
 

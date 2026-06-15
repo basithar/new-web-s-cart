@@ -16,8 +16,20 @@ const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 // Enable Cross-Origin Resource Sharing (CORS)
 app.use((0, cors_1.default)({
-    origin: '*', // Permit all origins for local/demo hosting
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    origin: (origin, callback) => {
+        // Permit local development, Vercel deployments, and physical hardware boards without origin headers
+        if (!origin)
+            return callback(null, true);
+        if (origin.startsWith('http://localhost') ||
+            origin.startsWith('http://127.0.0.1') ||
+            origin === 'https://new-web-s-cart.vercel.app' ||
+            origin.endsWith('.vercel.app')) {
+            return callback(null, true);
+        }
+        return callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: true
 }));
 // Express middleware for body parsing
 app.use(express_1.default.json());

@@ -33,9 +33,11 @@ router.get('/shopping-sessions', cartController_1.getAllCarts);
 router.post('/rfid/scan', rfidController_1.scanRfidCard);
 router.post('/cart/remove', cartController_1.removeItemFromCart);
 router.get('/rfid/history', rfidController_1.getScanHistory);
+router.post('/test-scan', esp32Controller_1.testScanLegacy);
 // --- ESP32 Telemetry Status Routes ---
 router.post('/esp32/heartbeat', esp32Controller_1.postHeartbeat);
 router.get('/esp32/status', esp32Controller_1.getStatus);
+router.post('/heartbeat', esp32Controller_1.postHeartbeatLegacy);
 // --- Payment & Transaction Checkout Routes ---
 router.post('/payment/process', paymentController_1.processPayment);
 router.post('/checkout', paymentController_1.processPayment);
