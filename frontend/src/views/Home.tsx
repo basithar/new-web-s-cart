@@ -1,501 +1,509 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
-import { API_URL } from '../config';
+import React, { useState } from 'react';
 import { 
   ShoppingCart, Cpu, Wallet, CreditCard, AlertTriangle, 
-  CheckCircle2, ArrowRight, RefreshCw, Smartphone, DollarSign, Gift, Loader2
+  CheckCircle2, ArrowRight, RefreshCw, Smartphone, DollarSign, 
+  Loader2, Key, HelpCircle, Scan, Trash2, Info, Wifi, WifiOff 
 } from 'lucide-react';
 
 interface CartItem {
-  uid: string;
   name: string;
   price: number;
   weight: number;
 }
 
-interface CartData {
-  status: 'shopping' | 'checkout' | 'paid';
-  budget: number;
-  remainingBudget: number;
-  totalPrice: number;
-  totalWeight: number;
-  physicalWeight: number;
-  weightMatch: boolean;
-  items: CartItem[];
-  lastUpdated: string;
-  lastSeen?: string;
-  paidAt?: string;
-  paymentMethod?: string;
-}
+type Step = 'landing' | 'login' | 'dashboard' | 'paying' | 'receipt';
 
 const Home: React.FC = () => {
-  const [cart, setCart] = useState<CartData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const [step, setStep] = useState<Step>('landing');
+  const [esp32Connected, setEsp32Connected] = useState<boolean>(false);
+  const [connecting, setConnecting] = useState<boolean>(false);
+  const [username, setUsername] = useState<string>('guest_shopper');
+  const [password, setPassword] = useState<string>('••••••••');
+  const [loggingIn, setLoggingIn] = useState<boolean>(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('card');
-  const [paying, setPaying] = useState<boolean>(false);
-  const [payError, setPayError] = useState<string | null>(null);
+  const [transactionId, setTransactionId] = useState<string>('');
+  const [timestamp, setTimestamp] = useState<string>('');
 
-  // 1. Subscribe to CART_001 document in real-time
-  useEffect(() => {
-    const cartRef = doc(db, 'carts', 'CART_001');
-    const unsubscribe = onSnapshot(cartRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setCart(docSnap.data() as CartData);
-      } else {
-        // Auto-initialize if it doesn't exist
-        const defaultCart: CartData = {
-          status: 'shopping',
-          budget: 3500,
-          remainingBudget: 3500,
-          totalPrice: 0,
-          totalWeight: 0,
-          physicalWeight: 0,
-          weightMatch: false,
-          items: [],
-          lastUpdated: new Date().toISOString()
-        };
-        setDoc(cartRef, defaultCart);
-        setCart(defaultCart);
-      }
-      setLoading(false);
-    }, (err) => {
-      console.error('Firestore subscription error:', err);
-      setLoading(false);
-    });
+  // Simulated items data
+  const simulatedItems: CartItem[] = [
+    { name: 'Maliban Chocolate Biscuit', price: 240, weight: 200 },
+    { name: 'Brown Sugar', price: 140, weight: 500 },
+    { name: 'LUX Soap', price: 170, weight: 100 }
+  ];
 
-    return () => unsubscribe();
-  }, []);
+  const totalPrice = 550;
+  const totalWeight = 800;
 
-  // 2. Keep current time updated for online check comparison
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(Date.now());
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // 3. Online Check Logic (< 30s ago)
-  const isOnline = (() => {
-    if (!cart || !cart.lastSeen) return false;
-    const lastSeenTime = new Date(cart.lastSeen).getTime();
-    return (currentTime - lastSeenTime) < 30000;
-  })();
-
-  // 4. Pay action
-  const handlePayment = async () => {
-    setPaying(true);
-    setPayError(null);
-    try {
-      const response = await axios.post(`${API_URL}/cart/pay`, {
-        cartId: 'CART_001',
-        paymentMethod
-      });
-      if (!response.data.success) {
-        setPayError(response.data.error || 'Payment failed.');
-      }
-    } catch (err: any) {
-      setPayError(err.response?.data?.error || err.message || 'Payment server error.');
-    } finally {
-      setPaying(false);
-    }
+  // Handle ESP32 connection simulation
+  const handleConnectESP32 = () => {
+    setConnecting(true);
+    setTimeout(() => {
+      setConnecting(false);
+      setEsp32Connected(true);
+    }, 1200);
   };
 
-  // 5. Reset Cart logic
-  const handleReset = async () => {
-    try {
-      setLoading(true);
-      const cartRef = doc(db, 'carts', 'CART_001');
-      const resetCart: CartData = {
-        status: 'shopping',
-        budget: 3500,
-        remainingBudget: 3500,
-        totalPrice: 0,
-        totalWeight: 0,
-        physicalWeight: 0,
-        weightMatch: false,
-        items: [],
-        lastUpdated: new Date().toISOString()
-      };
-      await setDoc(cartRef, resetCart);
-    } catch (err) {
-      console.error('Reset cart error:', err);
-    } finally {
-      setLoading(false);
-    }
+  // Handle Shopper Login
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoggingIn(true);
+    setTimeout(() => {
+      setLoggingIn(false);
+      setStep('dashboard');
+    }, 1000);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-4 text-theme-text">
-        <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-        <p className="text-xs font-bold uppercase tracking-wider text-slate-450">Connecting to Kiosk CART_001...</p>
-      </div>
-    );
-  }
+  // Handle Payment simulation
+  const handlePayment = () => {
+    setStep('paying');
+    // Generate transaction metadata
+    setTransactionId(`TXN-${Math.floor(100000 + Math.random() * 900000)}`);
+    setTimestamp(new Date().toLocaleString());
+    
+    setTimeout(() => {
+      setStep('receipt');
+    }, 2000);
+  };
 
-  if (!cart) return null;
-
-  const budgetUsagePercent = cart.budget > 0 ? Math.min(100, (cart.totalPrice / cart.budget) * 100) : 0;
-  const isBudgetExceeded = cart.totalPrice > cart.budget;
+  // Reset demo
+  const handleReset = () => {
+    setEsp32Connected(false);
+    setStep('landing');
+  };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 py-6 text-theme-text text-left relative transition-colors duration-300">
+    <div className="min-h-screen bg-[#0B1220] text-slate-100 flex flex-col justify-between font-sans selection:bg-emerald-500 selection:text-white relative overflow-hidden py-10 px-4 sm:px-6">
       
-      {/* ─── SECTION 1: LIVE CART STATUS BAR ─── */}
-      <div className="glass-panel rounded-3xl p-5 border border-theme-border flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shadow-md">
-            <ShoppingCart className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-extrabold text-sm uppercase tracking-wider">Kiosk Terminal: CART_001</h3>
-            <p className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5">Real-time checkout active</p>
-          </div>
-        </div>
+      {/* Decorative Background Elements */}
+      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-violet-500/5 blur-[120px] pointer-events-none"></div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status Badges */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Cart Status:</span>
-            {cart.status === 'shopping' && <span className="badge-warning">Shopping</span>}
-            {cart.status === 'checkout' && <span className="badge-success">Checkout</span>}
-            {cart.status === 'paid' && <span className="badge-success bg-blue-500/10 text-blue-500 border-blue-500/20">Paid</span>}
-          </div>
-
-          <span className="text-slate-300 dark:text-slate-700">|</span>
-
-          {/* Connection Status */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Hardware status:</span>
-            {isOnline ? (
-              <span className="badge-success flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Online
-              </span>
-            ) : (
-              <span className="badge-danger flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
-                Offline
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Grid (Budget + Items Table + Controls) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Container */}
+      <div className="max-w-4xl w-full mx-auto my-auto z-10">
         
-        {/* Left/Middle Column (Budget + Scanned Items) */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* ─── SECTION 2: BUDGET SECTION ─── */}
-          <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border space-y-4 shadow-lg">
-            <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Wallet className="w-4 h-4 text-emerald-500" /> Budget Lock Profile
-            </h4>
+        {/* ─── PART 1: LANDING PAGE ─── */}
+        {step === 'landing' && (
+          <div className="space-y-10 animate-fade-in text-center">
             
-            <div className="grid grid-cols-3 gap-4">
-              <div className="p-3 rounded-2xl bg-theme-bg border border-theme-border">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Lock Limit</span>
-                <span className="text-base font-extrabold font-mono">Rs. {cart.budget.toLocaleString()}</span>
+            {/* Header */}
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider">
+                <ShoppingCart className="w-3.5 h-3.5" /> Presentation Mode
               </div>
+              <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-400">
+                WELCOME TO SMART SHOPPING
+              </h1>
+              <p className="text-sm text-slate-400 max-w-lg mx-auto">
+                Follow this quick operational reference card to configure, control, and interact with the physical shopping cart terminal.
+              </p>
+            </div>
+
+            {/* Instruction Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
               
-              <div className="p-3 rounded-2xl bg-theme-bg border border-theme-border">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Total Spent</span>
-                <span className={`text-base font-extrabold font-mono ${isBudgetExceeded ? 'text-rose-550' : 'text-theme-text'}`}>
-                  Rs. {cart.totalPrice.toLocaleString()}
-                </span>
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold font-mono">A</div>
+                <h3 className="text-sm font-bold text-slate-200">Set a Budget</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Enter your budget using the keypad and press 'A' to confirm.</p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-theme-bg border border-theme-border">
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Remaining</span>
-                <span className={`text-base font-extrabold font-mono ${cart.remainingBudget < 0 ? 'text-rose-550' : 'text-emerald-500'}`}>
-                  Rs. {cart.remainingBudget.toLocaleString()}
-                </span>
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold font-mono">B</div>
+                <h3 className="text-sm font-bold text-slate-200">Backspace</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Press 'B' to delete the last number.</p>
               </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold font-mono">C</div>
+                <h3 className="text-sm font-bold text-slate-200">Clear Input</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Press 'C' to clear and type again.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold font-mono">D</div>
+                <h3 className="text-sm font-bold text-slate-200">Increase Budget</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Press 'D' to add more money while shopping.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold font-mono">#</div>
+                <h3 className="text-sm font-bold text-slate-200">Reset Cart</h3>
+                <p className="text-[11px] text-slate-400 animate-pulse-green">Press '#' to completely reset the cart.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center"><Scan className="w-4 h-4" /></div>
+                <h3 className="text-sm font-bold text-slate-200">Scan & Add Items</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Scan a tag. If valid, details display and Green LED blinks.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center"><AlertTriangle className="w-4 h-4" /></div>
+                <h3 className="text-sm font-bold text-slate-200">Invalid Items</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">If invalid, Red LED blinks and prompts to try another item.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center"><Trash2 className="w-4 h-4" /></div>
+                <h3 className="text-sm font-bold text-slate-200">Remove Items</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Press the Green Button and scan an item to remove it.</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 backdrop-blur-md hover:border-slate-700 transition-all space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-455 flex items-center justify-center"><Info className="w-4 h-4" /></div>
+                <h3 className="text-sm font-bold text-slate-200">Checkout</h3>
+                <p className="text-[11px] text-slate-400 leading-normal">Press the Red Button to end shopping and go to checkout.</p>
+              </div>
+
             </div>
 
-            {/* Budget Progress Bar */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                <span>Budget Consumption</span>
-                <span className={isBudgetExceeded ? 'text-rose-550' : 'text-emerald-555'}>
-                  {budgetUsagePercent.toFixed(1)}%
-                </span>
-              </div>
-              <div className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden border border-theme-border">
-                <div 
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    isBudgetExceeded ? 'bg-rose-550' : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${budgetUsagePercent}%` }}
-                ></div>
-              </div>
-              {isBudgetExceeded && (
-                <p className="text-[10px] text-rose-550 font-bold animate-pulse">
-                  ⚠️ Budget Exceeded! Please remove some items to restore verification compliance.
-                </p>
-              )}
+            {/* Action Button */}
+            <div className="pt-4">
+              <button
+                onClick={() => setStep('login')}
+                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-semibold px-8 py-3.5 rounded-2xl transition-all duration-200 shadow-lg shadow-emerald-500/20 text-sm tracking-wider uppercase"
+              >
+                Proceed to Shopper Login <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
+
           </div>
+        )}
 
-          {/* ─── SECTION 3: SCANNED ITEMS TABLE ─── */}
-          <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border space-y-4 shadow-lg">
-            <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider">
-              Scanned Cart Items ({cart.items.length})
-            </h4>
-
-            {cart.items.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs font-semibold bg-theme-bg border border-theme-border border-dashed rounded-2xl">
-                No items scanned yet. Scan an RFID tag on the physical cart to add items.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-theme-border text-slate-400 font-bold uppercase">
-                      <th className="py-2.5">Product Name</th>
-                      <th className="py-2.5 text-center">RFID UID</th>
-                      <th className="py-2.5 text-right">Weight (g)</th>
-                      <th className="py-2.5 text-right">Price (Rs.)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-theme-border/20">
-                    {cart.items.map((item, index) => (
-                      <tr key={index} className="hover:bg-slate-500/5 transition-colors">
-                        <td className="py-3 font-semibold">{item.name}</td>
-                        <td className="py-3 text-center font-mono font-bold text-slate-450">{item.uid}</td>
-                        <td className="py-3 text-right font-mono">{item.weight}g</td>
-                        <td className="py-3 text-right font-extrabold text-theme-text">Rs. {item.price.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    {/* Total Row */}
-                    <tr className="border-t-2 border-theme-border bg-theme-bg/50 font-extrabold text-sm">
-                      <td className="py-3.5 pl-2">Total Summary</td>
-                      <td className="py-3.5 text-center text-xs text-slate-400 font-bold">Total Scanned</td>
-                      <td className="py-3.5 text-right font-mono">{cart.totalWeight}g</td>
-                      <td className="py-3.5 text-right text-emerald-500 font-mono">Rs. {cart.totalPrice.toLocaleString()}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        {/* Right Column (Verification & Payment) */}
-        <div className="space-y-6">
-          
-          {/* ─── SECTION 4: WEIGHT VERIFICATION SECTION ─── */}
-          {cart.status === 'checkout' && (
-            <div className={`glass-panel rounded-3xl p-6 border-theme-border space-y-4 shadow-lg ${
-              cart.weightMatch ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'
-            }`}>
-              <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Cpu className="w-4 h-4 text-emerald-500" /> Scale Verification
-              </h4>
+        {/* ─── PART 2: SHOPPER LOGIN ─── */}
+        {step === 'login' && (
+          <div className="max-w-md w-full mx-auto animate-fade-in">
+            <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-lg shadow-2xl space-y-6">
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 rounded-2xl bg-theme-bg border border-theme-border text-center">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Expected (DB)</span>
-                  <span className="text-base font-extrabold font-mono">{cart.totalWeight}g</span>
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+                  <Key className="w-5 h-5" />
                 </div>
-                
-                <div className="p-3 rounded-2xl bg-theme-bg border border-theme-border text-center">
-                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Scale Sensor</span>
-                  <span className={`text-base font-extrabold font-mono ${cart.weightMatch ? 'text-emerald-500' : 'text-rose-550'}`}>
-                    {cart.physicalWeight}g
-                  </span>
-                </div>
+                <h2 className="text-xl font-bold text-white">Shopper Portal Authentication</h2>
+                <p className="text-xs text-slate-400">Securely sign in to connect and review your smart cart telemetry</p>
               </div>
 
-              {/* Match/Mismatch Indicator */}
-              <div className="flex items-center justify-center gap-2 py-1.5 border-t border-theme-border/30">
-                {cart.weightMatch ? (
-                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-                    <span>Weight Verified successfully!</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 text-xs font-bold">
-                    <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 animate-bounce" />
-                    <span>Weight discrepancy flagged</span>
-                  </div>
-                )}
-              </div>
-
-              {!cart.weightMatch && (
-                <p className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold leading-relaxed text-center">
-                  Weight mismatch! Please scan any unscanned items on the cart, then press STOP again.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ─── SECTION 5: PAYMENT SECTION ─── */}
-          {cart.status === 'checkout' && cart.weightMatch && (
-            <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border space-y-4 shadow-lg">
-              <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <CreditCard className="w-4 h-4 text-emerald-500" /> POS Checkout Gateway
-              </h4>
-
-              {/* Selector */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Method</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setPaymentMethod('card')}
-                    className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-                      paymentMethod === 'card' 
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-650' 
-                        : 'border-theme-border bg-theme-bg hover:bg-slate-500/5'
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" /> Card
-                  </button>
-                  
-                  <button
-                    onClick={() => setPaymentMethod('mobile')}
-                    className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-                      paymentMethod === 'mobile' 
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-650' 
-                        : 'border-theme-border bg-theme-bg hover:bg-slate-500/5'
-                    }`}
-                  >
-                    <Smartphone className="w-4 h-4" /> Mobile Pay
-                  </button>
-
-                  <button
-                    onClick={() => setPaymentMethod('cash')}
-                    className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-                      paymentMethod === 'cash' 
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-650' 
-                        : 'border-theme-border bg-theme-bg hover:bg-slate-500/5'
-                    }`}
-                  >
-                    <DollarSign className="w-4 h-4" /> Cash
-                  </button>
-
-                  <button
-                    onClick={() => setPaymentMethod('wallet')}
-                    className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 ${
-                      paymentMethod === 'wallet' 
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-650' 
-                        : 'border-theme-border bg-theme-bg hover:bg-slate-500/5'
-                    }`}
-                  >
-                    <Gift className="w-4 h-4" /> Wallet
-                  </button>
-                </div>
-              </div>
-
-              <div className="border-t border-theme-border pt-4 mt-2 space-y-3">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-400">Paying Amount:</span>
-                  <span className="text-base font-extrabold text-theme-text">Rs. {cart.totalPrice.toLocaleString()}</span>
+              {/* Login Form */}
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Shopper ID / Email</label>
+                  <input 
+                    type="text" 
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-emerald-500/50 rounded-xl px-4 py-3 text-xs focus:outline-none transition-all text-slate-200" 
+                    required
+                  />
                 </div>
 
-                {payError && (
-                  <p className="text-[10px] text-rose-500 font-bold">{payError}</p>
-                )}
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Passcode</label>
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-emerald-500/50 rounded-xl px-4 py-3 text-xs focus:outline-none transition-all text-slate-200" 
+                    required
+                  />
+                </div>
 
                 <button
-                  onClick={handlePayment}
-                  disabled={paying}
-                  className="w-full glass-button font-bold text-xs uppercase tracking-wider py-3"
+                  type="submit"
+                  disabled={loggingIn}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/15 flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
                 >
-                  {paying ? (
+                  {loggingIn ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Processing...
+                      <Loader2 className="w-4 h-4 animate-spin" /> Authenticating...
                     </>
                   ) : (
                     <>
-                      Pay Now (Rs. {cart.totalPrice.toLocaleString()}) <ArrowRight className="w-4 h-4" />
+                      Login <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
+              </form>
+
+              {/* Go Back button */}
+              <div className="text-center pt-2">
+                <button 
+                  onClick={() => setStep('landing')}
+                  className="text-xs text-slate-500 hover:text-slate-400 transition-colors font-medium underline"
+                >
+                  Back to Reference Instructions
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ─── PART 3: CART SIMULATION DASHBOARD ─── */}
+        {step === 'dashboard' && (
+          <div className="space-y-6 animate-fade-in text-left">
+            
+            {/* Dashboard Status Bar */}
+            <div className="p-5 rounded-3xl bg-slate-900/40 border border-slate-850 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shadow-inner">
+                  <ShoppingCart className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-white uppercase tracking-wider">Terminal Kiosk: CART_001</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5">Live demonstration active</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">ESP32 Status:</span>
+                {esp32Connected ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-450 border border-emerald-500/20 text-[10px] font-bold uppercase tracking-wider">
+                    <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-455 border border-amber-500/20 text-[10px] font-bold uppercase tracking-wider">
+                    <WifiOff className="w-3.5 h-3.5" />
+                    Disconnected
+                  </span>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Fallback Display showing that stopped weight verification is pending */}
-          {cart.status === 'shopping' && cart.items.length > 0 && (
-            <div className="glass-panel rounded-3xl p-5 bg-theme-card border-theme-border text-center space-y-3 shadow-md">
-              <RefreshCw className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
-              <div className="space-y-1">
-                <h5 className="font-bold text-xs">Awaiting Hardware Stop</h5>
-                <p className="text-[10px] text-slate-400 leading-normal">
-                  Click the physical **STOP** button on your shopping cart to compare scale telemetry and unlock payment.
-                </p>
+            {/* Dashboard Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Left Column - Product Table */}
+              <div className="lg:col-span-2 space-y-6">
+                <div className="p-6 rounded-3xl bg-slate-900/30 border border-slate-850 shadow-xl space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider">
+                      Scanned Cart Contents
+                    </h4>
+                    {!esp32Connected && (
+                      <span className="text-[10px] text-slate-500 italic">Connect telemetry to load data</span>
+                    )}
+                  </div>
+
+                  {!esp32Connected ? (
+                    <div className="p-16 text-center bg-slate-950/40 border border-slate-850/65 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4">
+                      <Cpu className="w-10 h-10 text-slate-650 animate-pulse" />
+                      <div className="space-y-1">
+                        <h5 className="text-xs font-bold text-slate-300">ESP32 Connection Pending</h5>
+                        <p className="text-[10px] text-slate-500 max-w-xs leading-normal">
+                          Click the link button on the right panel to establish scale load cell and RFID scanner database links.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto animate-fade-in">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wide">
+                            <th className="pb-3 pl-2">Product Name</th>
+                            <th className="pb-3 text-right">Weight (g)</th>
+                            <th className="pb-3 text-right pr-2">Price (Rs.)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-850/50">
+                          {simulatedItems.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-slate-800/10 transition-colors">
+                              <td className="py-3.5 pl-2 font-semibold text-slate-200">{item.name}</td>
+                              <td className="py-3.5 text-right font-mono text-slate-300">{item.weight}g</td>
+                              <td className="py-3.5 text-right font-extrabold text-white pr-2">Rs. {item.price}</td>
+                            </tr>
+                          ))}
+                          {/* Aggregates Summary */}
+                          <tr className="border-t border-slate-800 bg-slate-950/20 font-extrabold text-sm">
+                            <td className="py-4 pl-3">Total Summary</td>
+                            <td className="py-4 text-right font-mono text-emerald-400">{totalWeight}g</td>
+                            <td className="py-4 text-right text-emerald-450 pr-3 font-mono">Rs. {totalPrice}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                </div>
               </div>
-            </div>
-          )}
 
-        </div>
+              {/* Right Column - Simulator Settings & Action Gateway */}
+              <div className="space-y-6">
+                
+                {/* ESP32 Connect controls */}
+                <div className="p-6 rounded-3xl bg-slate-900/30 border border-slate-850 shadow-xl space-y-4 text-center">
+                  <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider text-left">
+                    Hardware Emulator
+                  </h4>
+                  <p className="text-[10px] text-slate-500 text-left leading-normal">
+                    Simulate load cell weight synchronization and RFID data scan ingestion directly from a virtual microcontroller.
+                  </p>
+
+                  {!esp32Connected ? (
+                    <button
+                      onClick={handleConnectESP32}
+                      disabled={connecting}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-semibold py-3.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                    >
+                      {connecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Fetching Handshake...
+                        </>
+                      ) : (
+                        <>
+                          Connect ESP32 <Wifi className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/10 text-emerald-450 font-bold text-xs flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      ESP32 Linked Successfully
+                    </div>
+                  )}
+                </div>
+
+                {/* Verification Check & Checkout Gateway */}
+                {esp32Connected && (
+                  <div className="space-y-4 animate-fade-in">
+                    
+                    {/* Weight Verification Success Alert */}
+                    <div className="p-4.5 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-450 font-extrabold text-xs flex items-center justify-center gap-2.5 shadow-md shadow-emerald-500/5 animate-pulse">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+                      <span className="tracking-wide">Weight is Matched! ✅</span>
+                    </div>
+
+                    {/* Checkout Trigger */}
+                    <div className="p-6 rounded-3xl bg-slate-900/30 border border-slate-850 shadow-xl space-y-4">
+                      <h4 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider">
+                        POS Payment Lock
+                      </h4>
+                      <div className="flex justify-between items-center text-xs text-slate-400">
+                        <span>Checkout amount:</span>
+                        <strong className="text-base text-white font-mono">Rs. {totalPrice}</strong>
+                      </div>
+                      <button
+                        onClick={handlePayment}
+                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-650 active:scale-95 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/15 flex items-center justify-center gap-2 text-xs uppercase tracking-wider"
+                      >
+                        Proceed to Payment <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* Logout anchor */}
+            <div className="pt-2">
+              <button 
+                onClick={handleReset}
+                className="text-xs text-slate-500 hover:text-slate-400 transition-colors font-semibold"
+              >
+                ← Disconnect Cart & Log Out
+              </button>
+            </div>
+
+          </div>
+        )}
+
+        {/* ─── checkout loader state ─── */}
+        {step === 'paying' && (
+          <div className="max-w-sm w-full mx-auto p-8 rounded-3xl bg-slate-900/40 border border-slate-850 backdrop-blur-lg shadow-2xl text-center space-y-6 animate-fade-in">
+            <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mx-auto" />
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-white">Processing Transaction</h3>
+              <p className="text-xs text-slate-400">Please authorize the secure contactless card or mobile wallet interface...</p>
+            </div>
+          </div>
+        )}
+
+        {/* ─── PART 4: RECEIPT GATEWAY ─── */}
+        {step === 'receipt' && (
+          <div className="max-w-md w-full mx-auto animate-fade-in">
+            <div className="p-8 rounded-3xl bg-slate-900/40 border border-slate-800 backdrop-blur-lg shadow-2xl space-y-6">
+              
+              {/* Receipt Success Banner */}
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-450 flex items-center justify-center mx-auto border border-emerald-500/20 shadow-md">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                </div>
+                <h2 className="text-xl font-extrabold text-white">Payment Successful!</h2>
+                <p className="text-xs text-slate-400 font-medium">Your retail transaction was processed successfully.</p>
+              </div>
+
+              {/* Digital Receipt Card */}
+              <div className="p-5 rounded-2xl bg-slate-950/60 border border-slate-850 space-y-4 text-xs">
+                
+                <div className="flex justify-between items-center pb-2.5 border-b border-slate-800/60 text-[11px]">
+                  <span className="font-bold text-slate-450 uppercase">Transaction ID</span>
+                  <span className="font-mono font-bold text-slate-300">{transactionId}</span>
+                </div>
+
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-slate-455 font-bold uppercase">Timestamp</span>
+                  <span className="text-slate-300 font-medium">{timestamp}</span>
+                </div>
+
+                <div className="space-y-2.5 py-3 border-y border-slate-800/60">
+                  {simulatedItems.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-400 font-medium">{item.name}</span>
+                      <span className="font-mono font-bold text-slate-200">Rs. {item.price}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5 pt-1 text-[11px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-455 uppercase font-bold">Total Weight</span>
+                    <span className="font-mono font-bold text-slate-200">{totalWeight}g</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-455 uppercase font-bold">Payment Method</span>
+                    <span className="font-bold text-emerald-450 uppercase">Card (Contactless)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-extrabold pt-2.5 border-t border-slate-850/50">
+                    <span className="text-white">Amount Charged</span>
+                    <span className="text-emerald-400 font-mono">Rs. {totalPrice}</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Reset Kiosk Action */}
+              <button
+                onClick={handleReset}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/20 text-xs uppercase tracking-wider"
+              >
+                Done & Reset View
+              </button>
+
+            </div>
+          </div>
+        )}
 
       </div>
 
-      {/* ─── SECTION 6: PAYMENT SUCCESS OVERLAY ─── */}
-      {cart.status === 'paid' && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="max-w-md w-full glass-panel rounded-3xl p-6 bg-theme-card border-theme-border shadow-2xl space-y-6 transform scale-100 transition-all duration-300">
-            
-            {/* Header Success Checkmark */}
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto shadow-md border border-emerald-500/20">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 shrink-0" />
-              </div>
-              <h3 className="text-xl font-extrabold text-theme-text">Payment Successful!</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Your retail transaction was processed successfully.</p>
-            </div>
+      {/* Footer copyright metadata details */}
+      <div className="text-[10px] text-slate-600 font-semibold tracking-wider uppercase mt-8 z-10 text-center w-full">
+        Smart Cart presentation • Sri Lankan Rupees (Rs.)
+      </div>
 
-            {/* Receipt Summary */}
-            <div className="p-4 rounded-2xl bg-theme-bg border border-theme-border space-y-4 text-xs">
-              <div className="flex justify-between items-center pb-2 border-b border-theme-border/50">
-                <span className="font-bold text-slate-400">Payment Ref</span>
-                <span className="font-mono font-bold text-slate-500">CART_001_PAID</span>
-              </div>
-
-              {/* Scanned Items list */}
-              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                {cart.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-500 font-medium">{item.name}</span>
-                    <span className="font-mono font-bold">Rs. {item.price}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-theme-border/50 pt-3 space-y-1.5">
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-slate-400">Total weight:</span>
-                  <span className="font-mono font-bold">{cart.totalWeight}g</span>
-                </div>
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-slate-400">Payment method:</span>
-                  <span className="font-bold uppercase text-emerald-600 dark:text-emerald-400">{cart.paymentMethod || 'card'}</span>
-                </div>
-                <div className="flex justify-between items-center font-extrabold text-sm pt-1 border-t border-theme-border/20">
-                  <span className="text-theme-text">Total Paid:</span>
-                  <span className="text-theme-text">Rs. {cart.totalPrice.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Done Button */}
-            <button
-              onClick={handleReset}
-              className="w-full glass-button font-bold text-xs uppercase tracking-wider py-3 shadow-md"
-            >
-              Done & Reset View
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Keyframe Animations Injector */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+      `}</style>
 
     </div>
   );

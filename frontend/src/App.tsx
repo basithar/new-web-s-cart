@@ -16,7 +16,6 @@ import Checkout from './views/Checkout';
 import Success from './views/Success';
 import Profile from './views/Profile';
 import Admin from './views/Admin';
-import Presentation from './views/Presentation';
 
 // Shell Layout
 import Layout from './components/Layout';
@@ -95,8 +94,8 @@ const AppRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Standalone Kiosk Presentation Demo views */}
-      <Route path="/presentation" element={<Presentation />} />
-      <Route path="/demo" element={<Presentation />} />
+      <Route path="/presentation" element={<Home />} />
+      <Route path="/demo" element={<Home />} />
 
       <Route element={<Layout />}>
         {/* Public Portal Landing */}

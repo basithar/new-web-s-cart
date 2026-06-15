@@ -3,18 +3,17 @@ import { getCartDoc, saveCartDoc } from '../config/firebase';
 
 // Hardcoded Items Database
 export const itemsDB: { [key: string]: { name: string; price: number; weight: number } } = {
-  "F1CD0C01": { name: "Keeri Samba",     price: 1300, weight: 5000 },
-  "A5480D01": { name: "Anchor Milk",     price: 1150, weight: 400  },
-  "6BDC0D01": { name: "Choc Bis",        price: 450,  weight: 400  },
-  "5DF03806": { name: "Munchee Puff",    price: 130,  weight: 100  },
-  "A4190D01": { name: "LUX Soap",        price: 170,  weight: 100  },
-  "BC740901": { name: "Sunlight Pwd",    price: 330,  weight: 1000 },
-  "8B450C01": { name: "Signal Paste",    price: 280,  weight: 160  },
-  "E4320C01": { name: "Kottu Mee",       price: 135,  weight: 80   },
-  "01320D01": { name: "Coca Cola",       price: 420,  weight: 1560 },
-  "40ED8361": { name: "Yogurt Drink",    price: 160,  weight: 187  },
-  "71FE0C01": { name: "Ritzbury",        price: 250,  weight: 110  },
-  "CE410E01": { name: "Highland IceCrm", price: 650,  weight: 550  }
+  "F1CD0C01": { name: "Keeri Samba",                 price: 1300, weight: 5000 },
+  "A5480D01": { name: "Maliban Chocolate Biscuit",    price: 240,  weight: 200  },
+  "6BDC0D01": { name: "Choc Bis",                    price: 450,  weight: 400  },
+  "5DF03806": { name: "LUX Soap",                    price: 170,  weight: 100  },
+  "A4190D01": { name: "LUX Soap Legacy",             price: 170,  weight: 100  },
+  "B6930D01": { name: "Brown Sugar",                 price: 140,  weight: 500  },
+  "BC740901": { name: "Sunlight Pwd",                price: 330,  weight: 1000 },
+  "8B450C01": { name: "Signal Paste",                price: 280,  weight: 160  },
+  "E4320C01": { name: "Kottu Mee",                   price: 135,  weight: 80   },
+  "40ED8361": { name: "Yogurt Drink",                price: 160,  weight: 187  },
+  "CE410E01": { name: "Highland IceCrm",             price: 650,  weight: 550  }
 };
 
 interface CartItem {
