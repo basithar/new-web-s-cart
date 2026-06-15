@@ -1,307 +1,277 @@
 import { Request, Response } from 'express';
-import { dbService } from '../services/dbService';
-import { emitCartUpdate, emitNotification, emitCheckoutStatus } from '../services/socketService';
+import { getCartDoc, saveCartDoc } from '../config/firebase';
 
+// Hardcoded Items Database
+export const itemsDB: { [key: string]: { name: string; price: number; weight: number } } = {
+  "F1CD0C01": { name: "Keeri Samba",     price: 1300, weight: 5000 },
+  "A5480D01": { name: "Anchor Milk",     price: 1150, weight: 400  },
+  "6BDC0D01": { name: "Choc Bis",        price: 450,  weight: 400  },
+  "5DF03806": { name: "Munchee Puff",    price: 130,  weight: 100  },
+  "A4190D01": { name: "LUX Soap",        price: 170,  weight: 100  },
+  "BC740901": { name: "Sunlight Pwd",    price: 330,  weight: 1000 },
+  "8B450C01": { name: "Signal Paste",    price: 280,  weight: 160  },
+  "E4320C01": { name: "Kottu Mee",       price: 135,  weight: 80   },
+  "01320D01": { name: "Coca Cola",       price: 420,  weight: 1560 },
+  "40ED8361": { name: "Yogurt Drink",    price: 160,  weight: 187  },
+  "71FE0C01": { name: "Ritzbury",        price: 250,  weight: 110  },
+  "CE410E01": { name: "Highland IceCrm", price: 650,  weight: 550  }
+};
+
+interface CartItem {
+  uid: string;
+  name: string;
+  price: number;
+  weight: number;
+}
+
+interface CartDocument {
+  status: 'shopping' | 'checkout' | 'paid';
+  budget: number;
+  remainingBudget: number;
+  totalPrice: number;
+  totalWeight: number;
+  physicalWeight: number;
+  weightMatch: boolean;
+  items: CartItem[];
+  lastUpdated: string;
+  lastSeen?: string;
+  paidAt?: string;
+  paymentMethod?: string;
+}
+
+const fetchCartDoc = async (cartId: string): Promise<CartDocument> => {
+  const data = await getCartDoc(cartId);
+  if (data) {
+    const sanitizedCart = { ...data } as any;
+    
+    // Validate items array: filter out old product reference objects
+    if (!Array.isArray(sanitizedCart.items)) {
+      sanitizedCart.items = [];
+    } else {
+      sanitizedCart.items = sanitizedCart.items.filter(
+        (item: any) => item && typeof item === 'object' && typeof item.uid === 'string'
+      );
+    }
+
+    // Map old status values to the new spec
+    if (
+      !sanitizedCart.status || 
+      ['active', 'stopped', 'completed', 'pending', 'ready_for_payment', 'weight_mismatch'].includes(sanitizedCart.status)
+    ) {
+      sanitizedCart.status = 'shopping';
+    }
+
+    // Default missing numeric parameters
+    sanitizedCart.budget = Number(sanitizedCart.budget) || 3500;
+    sanitizedCart.totalPrice = sanitizedCart.items.reduce((sum: number, item: any) => sum + (Number(item.price) || 0), 0);
+    sanitizedCart.totalWeight = sanitizedCart.items.reduce((sum: number, item: any) => sum + (Number(item.weight) || 0), 0);
+    sanitizedCart.physicalWeight = Number(sanitizedCart.physicalWeight) || 0;
+    sanitizedCart.remainingBudget = sanitizedCart.budget - sanitizedCart.totalPrice;
+    sanitizedCart.weightMatch = sanitizedCart.weightMatch === true;
+    sanitizedCart.lastUpdated = sanitizedCart.lastUpdated || new Date().toISOString();
+
+    return sanitizedCart as CartDocument;
+  }
+  const defaultCart: CartDocument = {
+    status: 'shopping',
+    budget: 3500,
+    remainingBudget: 3500,
+    totalPrice: 0,
+    totalWeight: 0,
+    physicalWeight: 0,
+    weightMatch: false,
+    items: [],
+    lastUpdated: new Date().toISOString()
+  };
+  await saveCartDoc(cartId, defaultCart);
+  return defaultCart;
+};
+
+// 1. GET /api/cart/:cartId
 export const getCart = async (req: Request, res: Response) => {
   try {
-    const { cartId } = req.params;
-    let cart = await dbService.getCart(cartId);
-
-    if (!cart) {
-      // Auto-create cart session if it doesn't exist yet
-      cart = await dbService.saveCart({
-        cartId,
-        items: [],
-        budget: 0,
-        totalAmount: 0,
-        expectedWeight: 0,
-        physicalWeight: 0,
-        weightMismatch: false,
-        status: 'active',
-      });
-    }
-
-    res.status(200).json({
-      cart,
-    });
+    const { cartId = 'CART_001' } = req.params;
+    const cart = await fetchCartDoc(cartId);
+    res.status(200).json(cart);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export const updateItemQuantity = async (req: Request, res: Response) => {
+// 2. POST /api/rfid/scan
+export const scanRfidCard = async (req: Request, res: Response) => {
   try {
-    const { cartId, productId, quantity } = req.body;
-
-    if (!cartId || !productId) {
-      return res.status(400).json({ error: 'Missing cartId or productId.' });
-    }
-
-    let cart = await dbService.getCart(cartId);
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart session not found.' });
-    }
-
-    const itemIndex = cart.items.findIndex(
-      (item: any) =>
-        (typeof item.product === 'object' && item.product._id.toString() === productId) ||
-        (typeof item.product === 'string' && item.product === productId)
-    );
-
-    if (itemIndex === -1) {
-      return res.status(404).json({ error: 'Item not found in cart.' });
-    }
-
-    if (quantity <= 0) {
-      cart.items.splice(itemIndex, 1);
-    } else {
-      cart.items[itemIndex].quantity = quantity;
-    }
-
-    // Recalculate cost & weights
-    let expectedWeight = 0;
-    let totalAmount = 0;
-
-    cart.items.forEach((item: any) => {
-      // Re-populate item.product to make sure weight is accurate
-      const prod = item.product;
-      if (prod && typeof prod === 'object') {
-        expectedWeight += prod.weight * item.quantity;
-        totalAmount += prod.price * item.quantity;
-      }
-    });
-
-    const isMismatch = Math.abs(expectedWeight - cart.physicalWeight) > 25;
-
-    const updatedCart = await dbService.saveCart({
-      cartId,
-      items: cart.items,
-      expectedWeight,
-      totalAmount,
-      weightMismatch: isMismatch,
-    });
-
-    emitCartUpdate(cartId, updatedCart);
-
-    res.status(200).json(updatedCart);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const setCartBudget = async (req: Request, res: Response) => {
-  try {
-    const { cartId, budget } = req.body;
-
-    if (!cartId || budget === undefined) {
-      return res.status(400).json({ error: 'Missing cartId or budget.' });
-    }
-
-    const cart = await dbService.getCart(cartId);
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart session not found.' });
-    }
-
-    const updatedCart = await dbService.saveCart({
-      cartId,
-      budget: Number(budget),
-    });
-
-    emitCartUpdate(cartId, updatedCart);
-
-    res.status(200).json(updatedCart);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const startShoppingSession = async (req: Request, res: Response) => {
-  try {
-    const { cartId = 'CART_001' } = req.body;
-
-    // Reset and initialize cart session to active
-    const cart = await dbService.saveCart({
-      cartId,
-      items: [],
-      budget: 0,
-      totalAmount: 0,
-      expectedWeight: 0,
-      physicalWeight: 0,
-      weightMismatch: false,
-      status: 'active',
-    });
-
-    emitCartUpdate(cartId, cart);
-    
-    emitNotification({
-      type: 'info',
-      title: 'Session Started',
-      message: 'Kiosk shopping session started. RFID tag scanning is enabled.',
-    });
-
-    res.status(200).json({ success: true, cart });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const stopShoppingSession = async (req: Request, res: Response) => {
-  try {
-    const { cartId = 'CART_001', physicalWeight } = req.body;
-
-    if (physicalWeight === undefined) {
-      return res.status(400).json({ error: 'Missing physicalWeight for verification.' });
-    }
-
-    const cart = await dbService.getCart(cartId);
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart session not found.' });
-    }
-
-    // 1. Calculate total expected weight of all scanned products from database
-    let expectedWeight = 0;
-    let totalAmount = 0;
-
-    for (const item of cart.items) {
-      const prodId = (item.product as any)._id?.toString() || (item.product as any).toString();
-      const product = await dbService.getProductById(prodId);
-      if (product) {
-        expectedWeight += product.weight * item.quantity;
-        totalAmount += product.price * item.quantity;
-      }
-    }
-
-    const weightDifference = Math.abs(expectedWeight - Number(physicalWeight));
-    const isValid = weightDifference <= 25; // allow ±25g tolerance
-    const statusStr = isValid ? 'ready_for_payment' : 'weight_mismatch';
-
-    // 2. Save session status and save final verified weights
-    const updatedCart = await dbService.saveCart({
-      cartId,
-      expectedWeight,
-      physicalWeight: Number(physicalWeight),
-      totalAmount,
-      weightMismatch: !isValid,
-      status: statusStr,
-    });
-
-    emitCartUpdate(cartId, updatedCart);
-    emitCheckoutStatus(cartId, { success: isValid, status: statusStr });
-
-    if (!isValid) {
-      emitNotification({
-        type: 'error',
-        title: 'Weight Mismatch Flagged',
-        message: `Mismatch detected! Kiosk reads ${physicalWeight}g, but database expected ${expectedWeight}g. Please rescan or remove unscanned items.`,
-      });
-      return res.status(200).json({ success: false, status: 'weight_mismatch' });
-    } else {
-      emitNotification({
-        type: 'success',
-        title: 'Weight Verified',
-        message: `Cart weight verified successfully at ${physicalWeight}g.`,
-      });
-      return res.status(200).json({ success: true, status: 'ready_for_payment' });
-    }
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const resumeShoppingSession = async (req: Request, res: Response) => {
-  try {
-    const { cartId = 'CART_001' } = req.body;
-
-    const cart = await dbService.getCart(cartId);
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart session not found.' });
-    }
-
-    const updatedCart = await dbService.saveCart({
-      cartId,
-      status: 'active',
-    });
-
-    emitCartUpdate(cartId, updatedCart);
-    emitNotification({
-      type: 'info',
-      title: 'Session Resumed',
-      message: 'Kiosk shopping session resumed. RFID scanning is enabled.',
-    });
-
-    res.status(200).json({ success: true, cart: updatedCart });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const getAllCarts = async (req: Request, res: Response) => {
-  try {
-    const carts = await dbService.getCarts();
-    res.status(200).json(carts);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const removeItemFromCart = async (req: Request, res: Response) => {
-  try {
-    const { uid, cartId = 'CART_001' } = req.body;
+    const { uid, cartId = 'CART_001', weight = 0 } = req.body;
 
     if (!uid) {
-      return res.status(400).json({ error: 'Missing RFID UID parameter.' });
+      return res.status(400).json({ success: false, error: 'Missing RFID UID parameter.' });
     }
 
-    let cart = await dbService.getCart(cartId);
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart session not found.' });
+    const itemTemplate = itemsDB[uid];
+    if (!itemTemplate) {
+      return res.status(404).json({ success: false, error: 'Item not found in database' });
     }
 
-    const product = await dbService.getProductByRfid(uid);
-    if (!product) {
-      return res.status(404).json({ error: 'Product not registered in database catalog.' });
+    const cart = await fetchCartDoc(cartId);
+    
+    // Add item to items array
+    cart.items.push({
+      uid,
+      name: itemTemplate.name,
+      price: itemTemplate.price,
+      weight: itemTemplate.weight
+    });
+
+    // Recompute aggregates
+    cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
+    cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    
+    cart.status = 'shopping';
+    cart.physicalWeight = Number(weight);
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+
+    res.status(200).json({
+      success: true,
+      item: {
+        name: itemTemplate.name,
+        price: itemTemplate.price,
+        weight: itemTemplate.weight
+      },
+      cart: {
+        totalPrice: cart.totalPrice,
+        totalWeight: cart.totalWeight,
+        remainingBudget: cart.remainingBudget
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 3. POST /api/rfid/remove
+export const removeItemFromCart = async (req: Request, res: Response) => {
+  try {
+    const { uid, cartId = 'CART_001', weight = 0 } = req.body;
+
+    if (!uid) {
+      return res.status(400).json({ success: false, error: 'Missing RFID UID parameter.' });
     }
 
-    const productIdStr = product._id.toString();
-    const itemIndex = cart.items.findIndex(
-      (item: any) =>
-        (typeof item.product === 'object' && item.product._id.toString() === productIdStr) ||
-        (typeof item.product === 'string' && item.product === productIdStr)
-    );
-
-    if (itemIndex === -1) {
-      return res.status(404).json({ error: 'Item not found in shopping cart.' });
-    }
-
-    if (cart.items[itemIndex].quantity > 1) {
-      cart.items[itemIndex].quantity -= 1;
-    } else {
+    const cart = await fetchCartDoc(cartId);
+    
+    // Find index of item in cart array
+    const itemIndex = cart.items.findIndex(item => item.uid === uid);
+    if (itemIndex > -1) {
       cart.items.splice(itemIndex, 1);
     }
 
-    cart.expectedWeight = Math.max(0, cart.expectedWeight - product.weight);
-    cart.physicalWeight = Math.max(0, cart.physicalWeight - product.weight);
-    cart.totalAmount = Math.max(0, cart.totalAmount - product.price);
+    // Recompute aggregates
+    cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
+    cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    
+    cart.physicalWeight = Number(weight);
+    cart.lastUpdated = new Date().toISOString();
 
-    const savedCart = await dbService.saveCart({
-      cartId,
-      items: cart.items,
-      expectedWeight: cart.expectedWeight,
-      physicalWeight: cart.physicalWeight,
-      totalAmount: cart.totalAmount,
-      weightMismatch: Math.abs(cart.expectedWeight - cart.physicalWeight) > 25,
+    await saveCartDoc(cartId, cart);
+
+    res.status(200).json({
+      success: true,
+      cart: {
+        totalPrice: cart.totalPrice,
+        totalWeight: cart.totalWeight
+      }
     });
-
-    emitCartUpdate(cartId, savedCart);
-    emitNotification({
-      type: 'warning',
-      title: 'Item Removed',
-      message: `Removed from cart: ${product.name}`,
-    });
-
-    res.status(200).json({ success: true, cart: savedCart });
   } catch (error: any) {
-    console.error('Remove item endpoint error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 4. POST /api/cart/stop
+export const stopShoppingSession = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001', physicalWeight = 0 } = req.body;
+
+    const cart = await fetchCartDoc(cartId);
+    
+    // Recalculate totalPrice and totalWeight to ensure they match items array
+    cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
+    cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+
+    const weightDifference = Math.abs(cart.totalWeight - Number(physicalWeight));
+    const isValid = weightDifference <= 50; // ±50g tolerance limit
+
+    if (isValid) {
+      cart.status = 'checkout';
+      cart.weightMatch = true;
+      cart.physicalWeight = Number(physicalWeight);
+      cart.lastUpdated = new Date().toISOString();
+      
+      await saveCartDoc(cartId, cart);
+      
+      return res.status(200).json({
+        weightMatch: true,
+        totalPrice: cart.totalPrice,
+        totalWeight: cart.totalWeight
+      });
+    } else {
+      cart.status = 'shopping';
+      cart.weightMatch = false;
+      cart.physicalWeight = Number(physicalWeight);
+      cart.lastUpdated = new Date().toISOString();
+
+      await saveCartDoc(cartId, cart);
+
+      return res.status(200).json({
+        weightMatch: false,
+        difference: weightDifference,
+        message: "Weight mismatch. Please scan unscanned items."
+      });
+    }
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+// 5. POST /api/esp32/heartbeat
+export const postHeartbeat = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001', weight = 0, budget = 3500 } = req.body;
+
+    const cart = await fetchCartDoc(cartId);
+    cart.physicalWeight = Number(weight);
+    cart.budget = Number(budget);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    cart.lastSeen = new Date().toISOString();
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 6. POST /api/cart/pay
+export const payCart = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001', paymentMethod = 'card' } = req.body;
+
+    const cart = await fetchCartDoc(cartId);
+    cart.status = 'paid';
+    cart.paidAt = new Date().toISOString();
+    cart.paymentMethod = paymentMethod;
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+
+    res.status(200).json({ success: true, message: "Payment successful" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 };
