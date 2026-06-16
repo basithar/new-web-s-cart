@@ -52,9 +52,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
             </div>
             {!collapsed && (
               <div>
-                <h1 className="font-extrabold text-sm text-theme-text leading-none">Smart Cart</h1>
-                <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider">
-                  {user.role === 'admin' ? 'Store Console' : 'Kiosk Assistant'}
+                <h1 className="font-extrabold text-sm text-theme-text leading-none">
+                  {user.role === 'admin' ? 'Smart Cart' : 'Mr.B Smart'}
+                </h1>
+                <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider block mt-0.5">
+                  {user.role === 'admin' ? 'Store Console' : 'Shopping Cart'}
                 </span>
               </div>
             )}
@@ -87,20 +89,31 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
         <nav className="mt-6 px-4 space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
-            // For dashboard, we want exact path matching to prevent highlighting everything starting with /admin
+            const isSimulated = localStorage.getItem('esp32_simulated') === 'true';
             const isDashboard = item.path === '/admin';
+            const isCheckoutSimulated = isSimulated && item.path === '/checkout';
+            const targetPath = isCheckoutSimulated ? '/shopping?step=checkout' : item.path;
+            
             return (
               <NavLink
                 key={item.path}
-                to={item.path}
+                to={targetPath}
                 end={isDashboard}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
-                    isActive
+                className={({ isActive }) => {
+                  const queryParams = new URLSearchParams(window.location.search);
+                  const isStepCheckout = queryParams.get('step') === 'checkout';
+                  let active = isActive;
+                  if (item.path === '/shopping') {
+                    active = isActive && !isStepCheckout;
+                  } else if (item.path === '/checkout') {
+                    active = isActive || (isSimulated && isStepCheckout);
+                  }
+                  return `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
+                    active
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/15'
                       : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40'
-                  }`
-                }
+                  }`;
+                }}
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 {!collapsed && <span>{item.name}</span>}

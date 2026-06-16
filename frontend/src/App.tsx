@@ -93,10 +93,6 @@ const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      {/* Standalone Kiosk Presentation Demo views */}
-      <Route path="/presentation" element={<Home />} />
-      <Route path="/demo" element={<Home />} />
-
       <Route element={<Layout />}>
         {/* Public Portal Landing */}
         <Route path="/" element={<Home />} />

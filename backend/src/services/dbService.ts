@@ -313,22 +313,19 @@ export const seedMongoDatabase = async () => {
       console.log('Seeding Firebase Firestore with 12 supermarket products...');
       const initialProducts = [
         {"uid":"F1CD0C01","name":"Keeri Samba","price":1300,"weight":5000,"stock":100,"category":"Rice"},
-        {"uid":"A5480D01","name":"Maliban Chocolate Biscuit","price":240,"weight":200,"stock":100,"category":"Biscuits"},
-        {"uid":"6BDC0D01","name":"Choc Bis Maliban","price":450,"weight":400,"stock":100,"category":"Biscuits"},
+        {"uid":"A5480D01","name":"Maliban Biscuit","price":240,"weight":200,"stock":100,"category":"Biscuits"},
+        {"uid":"6BDC0D01","name":"Ritzbury","price":450,"weight":400,"stock":100,"category":"Biscuits"},
         {"uid":"5DF03806","name":"LUX Soap","price":170,"weight":100,"stock":100,"category":"Personal Care"},
-        {"uid":"A4190D01","name":"LUX Soap Legacy","price":170,"weight":100,"stock":100,"category":"Personal Care"},
         {"uid":"B6930D01","name":"Brown Sugar","price":140,"weight":500,"stock":100,"category":"General"},
-        {"uid":"BC740901","name":"Sunlight Pwd","price":330,"weight":1000,"stock":100,"category":"Detergent"},
         {"uid":"8B450C01","name":"Signal Paste","price":280,"weight":160,"stock":100,"category":"Personal Care"},
         {"uid":"E4320C01","name":"Kottu Mee","price":135,"weight":80,"stock":100,"category":"Instant Food"},
-        {"uid":"40ED8361","name":"Yogurt Drink","price":160,"weight":187,"stock":100,"category":"Dairy"},
         {"uid":"CE410E01","name":"Highland IceCrm","price":650,"weight":550,"stock":100,"category":"Ice Cream"}
       ];
 
       for (const p of initialProducts) {
         await dbService.createProduct(p);
       }
-      console.log('✨ Seeded 12 products successfully!');
+      console.log('✨ Seeded products successfully!');
     }
 
     // Seed default Users safely
@@ -337,7 +334,7 @@ export const seedMongoDatabase = async () => {
       await setDoc(doc(db, 'users', 'mock_uid_customer'), {
         firebaseId: 'mock_uid_customer',
         email: 'customer@smartcart.com',
-        name: 'Smart Customer',
+        name: 'Mr.B Smart Customer',
         role: 'customer',
         budgetLimit: 2000,
         budgetHistory: [{ date: new Date().toISOString(), limit: 2000 }],

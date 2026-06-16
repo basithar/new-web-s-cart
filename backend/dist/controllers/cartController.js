@@ -5,15 +5,12 @@ const firebase_1 = require("../config/firebase");
 // Hardcoded Items Database
 exports.itemsDB = {
     "F1CD0C01": { name: "Keeri Samba", price: 1300, weight: 5000 },
-    "A5480D01": { name: "Maliban Chocolate Biscuit", price: 240, weight: 200 },
-    "6BDC0D01": { name: "Choc Bis", price: 450, weight: 400 },
+    "A5480D01": { name: "Maliban Biscuit", price: 240, weight: 200 },
+    "6BDC0D01": { name: "Ritzbury", price: 450, weight: 400 },
     "5DF03806": { name: "LUX Soap", price: 170, weight: 100 },
-    "A4190D01": { name: "LUX Soap Legacy", price: 170, weight: 100 },
     "B6930D01": { name: "Brown Sugar", price: 140, weight: 500 },
-    "BC740901": { name: "Sunlight Pwd", price: 330, weight: 1000 },
     "8B450C01": { name: "Signal Paste", price: 280, weight: 160 },
     "E4320C01": { name: "Kottu Mee", price: 135, weight: 80 },
-    "40ED8361": { name: "Yogurt Drink", price: 160, weight: 187 },
     "CE410E01": { name: "Highland IceCrm", price: 650, weight: 550 }
 };
 const fetchCartDoc = async (cartId) => {

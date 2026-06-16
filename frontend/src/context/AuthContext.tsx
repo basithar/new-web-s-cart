@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         _id: 'mock_sync_id',
         firebaseId: firebaseUser.uid,
         email: firebaseUser.email || 'customer@smartcart.com',
-        name: firebaseUser.displayName || 'Smart Customer',
+        name: firebaseUser.displayName || 'Mr.B Smart Customer',
         role: is_admin ? 'admin' : 'customer',
         budgetLimit: 50,
         savedPaymentMethods: [],
@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const mockData = role === 'admin' 
         ? { firebaseId: 'mock_uid_admin', email: 'admin@smartcart.com', name: 'Smart Admin', role: 'admin' }
-        : { firebaseId: 'mock_uid_customer', email: 'customer@smartcart.com', name: 'Smart Customer', role: 'customer' };
+        : { firebaseId: 'mock_uid_customer', email: 'customer@smartcart.com', name: 'Mr.B Smart Customer', role: 'customer' };
 
       const response = await axios.post(`${API_URL}/auth/login`, mockData);
       const syncedUser = response.data.user;
@@ -151,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             _id: 'user_id_2',
             firebaseId: 'mock_uid_customer',
             email: 'customer@smartcart.com',
-            name: 'Smart Customer',
+            name: 'Mr.B Smart Customer',
             role: 'customer' as const,
             budgetLimit: 2000,
             savedPaymentMethods: [],
