@@ -22,7 +22,7 @@ const updateProducts = async () => {
 
   const itemsToUpsert = [
     { uid: 'F1CD0C01', name: 'Keeri Samba', price: 1300, weight: 5000, stock: 100, category: 'Rice', imageUrl: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300' },
-    { uid: 'A5480D01', name: 'Maliban Biscuit', price: 240, weight: 200, stock: 100, category: 'Biscuits', imageUrl: 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300' },
+    { uid: 'A5480D01', name: 'Maliban Chocolate Biscuit', price: 240, weight: 200, stock: 100, category: 'Biscuits', imageUrl: 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300' },
     { uid: '6BDC0D01', name: 'Ritzbury', price: 450, weight: 400, stock: 100, category: 'Biscuits', imageUrl: 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300' },
     { uid: '5DF03806', name: 'LUX Soap', price: 170, weight: 100, stock: 100, category: 'Personal Care', imageUrl: 'https://images.unsplash.com/photo-1607006342411-9a3363d63b36?w=300' },
     { uid: 'B6930D01', name: 'Brown Sugar', price: 140, weight: 500, stock: 100, category: 'General', imageUrl: 'https://images.unsplash.com/photo-1596450514966-a12b3b01be7f?w=300' },

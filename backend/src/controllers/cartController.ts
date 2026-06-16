@@ -4,7 +4,7 @@ import { getCartDoc, saveCartDoc } from '../config/firebase';
 // Hardcoded Items Database
 export const itemsDB: { [key: string]: { name: string; price: number; weight: number } } = {
   "F1CD0C01": { name: "Keeri Samba",                 price: 1300, weight: 5000 },
-  "A5480D01": { name: "Maliban Biscuit",             price: 240,  weight: 200  },
+  "A5480D01": { name: "Maliban Chocolate Biscuit",   price: 240,  weight: 200  },
   "6BDC0D01": { name: "Ritzbury",                    price: 450,  weight: 400  },
   "5DF03806": { name: "LUX Soap",                    price: 170,  weight: 100  },
   "B6930D01": { name: "Brown Sugar",                 price: 140,  weight: 500  },

@@ -313,7 +313,7 @@ export const seedMongoDatabase = async () => {
       console.log('Seeding Firebase Firestore with 12 supermarket products...');
       const initialProducts = [
         {"uid":"F1CD0C01","name":"Keeri Samba","price":1300,"weight":5000,"stock":100,"category":"Rice"},
-        {"uid":"A5480D01","name":"Maliban Biscuit","price":240,"weight":200,"stock":100,"category":"Biscuits"},
+        {"uid":"A5480D01","name":"Maliban Chocolate Biscuit","price":240,"weight":200,"stock":100,"category":"Biscuits"},
         {"uid":"6BDC0D01","name":"Ritzbury","price":450,"weight":400,"stock":100,"category":"Biscuits"},
         {"uid":"5DF03806","name":"LUX Soap","price":170,"weight":100,"stock":100,"category":"Personal Care"},
         {"uid":"B6930D01","name":"Brown Sugar","price":140,"weight":500,"stock":100,"category":"General"},

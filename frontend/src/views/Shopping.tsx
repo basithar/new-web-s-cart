@@ -119,7 +119,7 @@ const Shopping: React.FC = () => {
         product: {
           _id: 'prod_1',
           uid: 'A5480D01',
-          name: 'Maliban Biscuit',
+          name: 'Maliban Chocolate Biscuit',
           price: 240,
           weight: 200,
           stock: 100,
@@ -262,7 +262,7 @@ const Shopping: React.FC = () => {
       
       {/* Weight is Matched Banner */}
       {isSimulated && (
-        <div className="p-5 rounded-3xl bg-emerald-555/5 border border-emerald-500/20 text-emerald-650 dark:text-emerald-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-fade-in">
+        <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-fade-in">
           <CheckCircle className="w-6 h-6 text-emerald-500 shrink-0 animate-bounce" />
           <span>Weight is Matched! ✅</span>
         </div>

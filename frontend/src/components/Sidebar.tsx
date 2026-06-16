@@ -52,11 +52,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
             </div>
             {!collapsed && (
               <div>
-                <h1 className="font-extrabold text-sm text-theme-text leading-none">
-                  {user.role === 'admin' ? 'Smart Cart' : 'Mr.B Smart'}
+                <h1 className="font-extrabold text-sm text-theme-text leading-none tracking-tight">
+                  {user.role === 'admin' ? 'Smart Cart' : 'Mr.B Smart Shopping Cart'}
                 </h1>
                 <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider block mt-0.5">
-                  {user.role === 'admin' ? 'Store Console' : 'Shopping Cart'}
+                  {user.role === 'admin' ? 'Store Console' : 'Kiosk Assistant'}
                 </span>
               </div>
             )}
@@ -75,11 +75,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
           <div className="p-4 mx-4 mt-5 rounded-2xl bg-theme-bg border border-theme-border">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-white shadow-md">
-                {user.name.charAt(0)}
+                {user.role === 'customer' ? 'S' : user.name.charAt(0)}
               </div>
               <div className="overflow-hidden">
-                <h4 className="font-bold text-xs text-theme-text truncate">{user.name}</h4>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate capitalize">{user.role} Account</p>
+                <h4 className="font-bold text-xs text-theme-text truncate">
+                  {user.role === 'customer' ? 'Mr.B Smart Customer' : user.name}
+                </h4>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate capitalize">
+                  {user.role === 'customer' ? 'Customer Account' : `${user.role} Account`}
+                </p>
               </div>
             </div>
           </div>
