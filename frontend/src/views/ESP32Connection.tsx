@@ -20,6 +20,31 @@ const ESP32Connection: React.FC = () => {
     fetchEsp32Status
   } = useCart();
   
+  // Heartbeat online check timer
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const lastActiveTimestamp = esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  const isOnline = (() => {
+    if (!lastActiveTimestamp) return false;
+    const lastActiveTime = new Date(lastActiveTimestamp).getTime();
+    return (now - lastActiveTime) < 20000;
+  })();
+
+  const lastWeight = esp32Status?.lastWeightReading !== undefined 
+    ? esp32Status.lastWeightReading 
+    : (cart?.physicalWeight || 0);
+
+  const actualWeight = isOnline ? lastWeight : 0;
+  const expectedWeight = cart?.expectedWeight || 0;
+  const isWeightMatched = Math.abs(expectedWeight - actualWeight) <= 25;
+
   useEffect(() => {
     fetchScanHistory();
     fetchEsp32Status();
@@ -33,21 +58,21 @@ const ESP32Connection: React.FC = () => {
     return { label: 'Poor / Weak', color: 'text-rose-500' };
   };
 
-  const signal = esp32Status ? getSignalQuality(esp32Status.rssi) : { label: 'N/A', color: 'text-slate-400' };
+  const signal = isOnline && esp32Status ? getSignalQuality(esp32Status.rssi) : { label: 'N/A', color: 'text-slate-400' };
 
   return (
     <div className="space-y-6 text-theme-text text-left transition-colors duration-300">
       
       {/* 1. Status Overview Header */}
       <div className={`p-6 rounded-3xl border transition-all ${
-        esp32Status?.connected 
+        isOnline 
           ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
-          : 'bg-theme-card border-theme-border text-slate-500'
+          : 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400'
       }`}>
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div className="flex items-center gap-4 flex-col sm:flex-row">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-md ${
-              esp32Status?.connected ? 'bg-emerald-600 text-white' : 'bg-theme-bg border border-theme-border text-slate-400'
+              isOnline ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
             }`}>
               <Cpu className="w-7 h-7" />
             </div>
@@ -55,14 +80,14 @@ const ESP32Connection: React.FC = () => {
             <div>
               <h3 className="text-xl font-extrabold flex items-center justify-center sm:justify-start gap-2 text-theme-text">
                 ESP32-S3 Hardware Board 
-                {esp32Status?.connected ? (
+                {isOnline ? (
                   <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 ) : (
-                  <span className="flex h-2.5 w-2.5 rounded-full bg-slate-400"></span>
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse"></span>
                 )}
               </h3>
               <p className="text-xs opacity-80 mt-1">
-                {esp32Status?.connected 
+                {isOnline 
                   ? 'Real-time telemetry and scanning stream active.' 
                   : 'Hardware connection offline. Heartbeats timed out.'}
               </p>
@@ -74,7 +99,7 @@ const ESP32Connection: React.FC = () => {
       </div>
 
       {/* Warning banner when offline */}
-      {!esp32Status?.connected && (
+      {!isOnline && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2.5">
           <AlertTriangle className="w-5 h-5 shrink-0 animate-bounce" />
           <div>
@@ -94,7 +119,7 @@ const ESP32Connection: React.FC = () => {
           <Wifi className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Wi-Fi Connection</span>
           <h4 className="font-extrabold text-theme-text text-xs mt-1">
-            {esp32Status?.connected ? 'Connected' : 'Offline'}
+            {isOnline ? 'Connected' : 'Disconnected'}
           </h4>
         </div>
 
@@ -103,7 +128,7 @@ const ESP32Connection: React.FC = () => {
           <Radio className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Last RFID tag</span>
           <h4 className="font-extrabold text-theme-text text-xs font-mono mt-1">
-            {esp32Status?.lastRfidUid || 'None'}
+            {esp32Status?.lastRfidUid || 'Waiting for scan...'}
           </h4>
         </div>
 
@@ -112,10 +137,7 @@ const ESP32Connection: React.FC = () => {
           <Scale className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider block pt-2">Last Weight Reading</span>
           <h4 className="font-extrabold text-theme-text text-xs mt-1">
-            {esp32Status?.connected && esp32Status.lastWeightReading !== undefined
-              ? `${esp32Status.lastWeightReading}g`
-              : '0g'
-            }
+            {isOnline ? `${lastWeight}g` : '0g'}
           </h4>
         </div>
 
@@ -124,7 +146,7 @@ const ESP32Connection: React.FC = () => {
           <ShoppingBag className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Current Session</span>
           <h4 className="font-extrabold text-theme-text text-xs font-mono mt-1">
-            {esp32Status?.connected && esp32Status.currentShoppingSession 
+            {isOnline && esp32Status?.currentShoppingSession 
               ? esp32Status.currentShoppingSession 
               : 'None'
             }
@@ -136,7 +158,7 @@ const ESP32Connection: React.FC = () => {
           <Signal className="w-5 h-5 text-emerald-500" />
           <span className="text-[10px] text-slate-455 font-bold uppercase tracking-wider block pt-2">Signal Strength</span>
           <h4 className={`font-extrabold text-xs mt-1 ${signal.color}`}>
-            {esp32Status?.connected ? `${esp32Status.rssi} dBm` : 'N/A'}
+            {isOnline && esp32Status?.rssi !== undefined ? `${esp32Status.rssi} dBm` : 'N/A'}
           </h4>
         </div>
 
@@ -172,27 +194,27 @@ const ESP32Connection: React.FC = () => {
             <div className="p-4 rounded-2xl bg-theme-bg border border-theme-border space-y-2">
               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Expected vs Actual</span>
               <h3 className="text-lg font-extrabold text-theme-text">
-                {cart.expectedWeight}g <span className="text-slate-400 text-xs font-semibold">vs</span> {cart.physicalWeight}g
+                {cart.expectedWeight}g <span className="text-slate-400 text-xs font-semibold">vs</span> {actualWeight}g
               </h3>
               <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
                 <div 
                   className={`h-full rounded-full transition-all duration-300 ${
-                    cart.weightMismatch ? 'bg-rose-500' : 'bg-emerald-500'
+                    !isWeightMatched ? 'bg-rose-500' : 'bg-emerald-500'
                   }`}
-                  style={{ width: `${Math.min(100, cart.expectedWeight > 0 ? (cart.physicalWeight / cart.expectedWeight) * 105 : 0)}%` }}
+                  style={{ width: `${Math.min(100, cart.expectedWeight > 0 ? (actualWeight / cart.expectedWeight) * 105 : 0)}%` }}
                 ></div>
               </div>
             </div>
 
             {/* Weight verification status */}
             <div className={`p-4 rounded-2xl border space-y-2 ${
-              cart.weightMismatch 
+              !isWeightMatched 
                 ? 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400' 
-                : 'bg-emerald-555/5 border-emerald-500/20 text-emerald-650 dark:text-emerald-450'
+                : 'bg-emerald-555/5 border-emerald-500/20 text-emerald-655 dark:text-emerald-450'
             }`}>
               <span className="text-[9px] font-bold uppercase tracking-wider block opacity-70">Verification Status</span>
               <h3 className="text-lg font-extrabold flex items-center gap-1.5">
-                {cart.weightMismatch ? (
+                {!isWeightMatched ? (
                   <>
                     <AlertTriangle className="w-5 h-5 text-rose-550 shrink-0" />
                     Mismatch
@@ -205,7 +227,7 @@ const ESP32Connection: React.FC = () => {
                 )}
               </h3>
               <p className="text-[10px] opacity-85 leading-tight font-medium">
-                {cart.weightMismatch 
+                {!isWeightMatched 
                   ? 'Checkout blocked. Please resolve discrepancy.' 
                   : 'System verification passed. Checkout allowed.'}
               </p>
@@ -217,16 +239,16 @@ const ESP32Connection: React.FC = () => {
         {/* Checkout Guard Visual */}
         {cart && (
           <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${
-            cart.weightMismatch 
+            !isWeightMatched 
               ? 'bg-rose-500/5 border-rose-500/20' 
               : 'bg-emerald-500/5 border-emerald-500/20'
           }`}>
             <div className="flex items-center gap-2.5 text-xs">
-              <ShieldCheck className={`w-5 h-5 shrink-0 ${cart.weightMismatch ? 'text-rose-500' : 'text-emerald-500'}`} />
+              <ShieldCheck className={`w-5 h-5 shrink-0 ${!isWeightMatched ? 'text-rose-500' : 'text-emerald-500'}`} />
               <div className="text-left font-medium">
                 <p className="font-bold">Checkout Authorization Guard</p>
                 <p className="opacity-80 text-[10px]">
-                  {cart.weightMismatch 
+                  {!isWeightMatched 
                     ? 'Checkout triggers a payload block. Telemetry scales must match catalog weights.' 
                     : 'Scale aligned. The shopper can pay now.'}
                 </p>
@@ -234,10 +256,10 @@ const ESP32Connection: React.FC = () => {
             </div>
 
             <button
-              disabled={cart.weightMismatch || cart.items.length === 0}
+              disabled={!isWeightMatched || cart.items.length === 0}
               onClick={() => navigate('/checkout')}
               className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1 transition-all ${
-                cart.weightMismatch || cart.items.length === 0
+                !isWeightMatched || cart.items.length === 0
                   ? 'bg-slate-400/35 text-slate-400 cursor-not-allowed border border-transparent' 
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/10'
               }`}

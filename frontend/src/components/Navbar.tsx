@@ -24,6 +24,22 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
+  // Heartbeat online check timer
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const lastActiveTimestamp = esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  const isOnline = (() => {
+    if (!lastActiveTimestamp) return false;
+    const lastActiveTime = new Date(lastActiveTimestamp).getTime();
+    return (now - lastActiveTime) < 20000;
+  })();
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -78,15 +94,14 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
             <button
               onClick={() => navigate('/admin/esp32')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border transition-colors ${
-                esp32Status?.connected 
+                isOnline 
                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
-                  : 'bg-theme-bg text-slate-400 border-theme-border'
+                  : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
               }`}
             >
-              <Cpu className={`w-3.5 h-3.5 ${esp32Status?.connected ? 'animate-pulse text-emerald-500' : ''}`} />
+              <Cpu className={`w-3.5 h-3.5 ${isOnline ? 'animate-pulse text-emerald-550' : 'text-rose-500'}`} />
               <span className="hidden lg:inline">ESP32 Monitor:</span>
-              <span>{esp32Status?.connected ? 'Connected' : 'Offline'}</span>
-              <span className={`w-1.5 h-1.5 rounded-full ${esp32Status?.connected ? 'bg-emerald-500 animate-ping' : 'bg-slate-400'}`}></span>
+              <span>{isOnline ? 'Connected 🟢' : 'Disconnected 🔴'}</span>
             </button>
           )}
 
