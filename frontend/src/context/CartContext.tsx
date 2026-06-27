@@ -2,8 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useSocket } from './SocketContext';
 import { useAuth } from './AuthContext';
-import { rtdb } from '../firebase';
+import { db, rtdb } from '../firebase';
 import { ref, onValue } from 'firebase/database';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export interface CartData {
   cartId: string;
@@ -25,7 +26,10 @@ export interface CartData {
   expectedWeight: number;
   physicalWeight: number;
   weightMismatch: boolean;
-  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed' | 'ready_for_payment' | 'weight_mismatch';
+  status: 'pending' | 'active' | 'stopped' | 'checkout' | 'completed' | 'ready_for_payment' | 'weight_mismatch' | 'shopping';
+  lastActive?: string;
+  lastSeen?: string;
+  weightMatch?: boolean;
 }
 
 export interface ESP32Status {
@@ -36,6 +40,7 @@ export interface ESP32Status {
   lastScanTime: string;
   lastWeightReading?: number;
   currentShoppingSession?: string;
+  lastActive?: string;
 }
 
 export interface RFIDScanLog {
@@ -84,7 +89,54 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user, updateUserBudget } = useAuth();
   const { socket, triggerLocalNotification } = useSocket();
   const [cartId, setCartId] = useState<string>(() => localStorage.getItem('cart_id') || 'CART_001');
-  const [cart, setCart] = useState<CartData | null>(null);
+  
+  const normalizeCart = (cartData: any): CartData | null => {
+    if (!cartData) return null;
+    
+    if (cartData.items && cartData.items.length > 0 && cartData.items[0].product) {
+      return cartData as CartData;
+    }
+    
+    const items = cartData.items || [];
+    const groupedMap = new Map();
+    for (const item of items) {
+      const uid = item.uid || item.productId || 'unknown';
+      if (groupedMap.has(uid)) {
+        groupedMap.get(uid).quantity += 1;
+      } else {
+        groupedMap.set(uid, {
+          product: {
+            _id: uid,
+            uid: uid,
+            name: item.name || 'Unknown Item',
+            price: item.price || 0,
+            weight: item.weight || 0,
+            stock: 100,
+            category: 'General',
+            imageUrl: ''
+          },
+          quantity: 1
+        });
+      }
+    }
+    
+    return {
+      cartId: cartData.cartId || 'CART_001',
+      items: Array.from(groupedMap.values()),
+      budget: cartData.budget || 0,
+      totalAmount: cartData.totalPrice !== undefined ? cartData.totalPrice : (cartData.totalAmount || 0),
+      expectedWeight: cartData.totalWeight !== undefined ? cartData.totalWeight : (cartData.expectedWeight || 0),
+      physicalWeight: cartData.physicalWeight || 0,
+      weightMismatch: cartData.weightMatch !== undefined ? !cartData.weightMatch : (cartData.weightMismatch || false),
+      status: cartData.status || 'active'
+    };
+  };
+
+  const [cart, setCartState] = useState<CartData | null>(null);
+  const setCart = (c: any) => {
+    setCartState(normalizeCart(c));
+  };
+
   const [loading, setLoading] = useState<boolean>(true);
   const [scanHistory, setScanHistory] = useState<RFIDScanLog[]>([]);
   const [esp32Status, setEsp32Status] = useState<ESP32Status | null>(null);
@@ -136,6 +188,36 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchScanHistory();
     fetchEsp32Status();
     localStorage.setItem('cart_id', cartId);
+  }, [cartId]);
+
+  // Real-time listener for cart updates in Firestore
+  useEffect(() => {
+    if (!db) return;
+    const cartRef = doc(db, 'carts', cartId);
+    
+    let prevItemsLength = -1;
+
+    const unsubscribe = onSnapshot(cartRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        console.log('🔥 Cart updated via Firestore onSnapshot:', data);
+        setCart(data);
+        
+        const currentItemsLength = data.items ? data.items.length : 0;
+        if (prevItemsLength !== -1) {
+          if (currentItemsLength > prevItemsLength) {
+            const lastItem = data.items[data.items.length - 1];
+            const name = lastItem ? (lastItem.name || 'Item') : 'Item';
+            triggerLocalNotification('success', 'Item Added Successfully', `${name} added to cart.`);
+          } else if (currentItemsLength < prevItemsLength) {
+            triggerLocalNotification('info', 'Item Removed', `Item removed from cart.`);
+          }
+        }
+        prevItemsLength = currentItemsLength;
+      }
+    });
+
+    return () => unsubscribe();
   }, [cartId]);
 
   // Periodic poll for ESP32 connection heartbeat status (every 4 seconds)

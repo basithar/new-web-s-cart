@@ -7,15 +7,34 @@ import { emitCartUpdate, emitNotification, getIO } from '../services/socketServi
 
 export const postHeartbeat = async (req: Request, res: Response) => {
   try {
-    const { wifiStatus = 'Connected', rssi = -60, cartId, weight } = req.body;
+    const { wifiStatus = 'Connected', rssi = -60, cartId = 'CART_001', weight } = req.body;
     
-    // Register heartbeat
+    // Register heartbeat in Firestore
     await esp32Service.updateHeartbeat(
       wifiStatus, 
       Number(rssi), 
       cartId, 
       weight !== undefined ? Number(weight) : undefined
     );
+    
+    // Sync RTDB connection status
+    const rtdbRef = ref(rtdb, 'esp32Status');
+    const statusPayload = {
+      connected: true,
+      wifiStatus,
+      rssi: Number(rssi),
+      lastActive: new Date().toISOString(),
+      currentShoppingSession: cartId,
+      lastWeightReading: weight !== undefined ? Number(weight) : undefined
+    };
+    await set(rtdbRef, statusPayload);
+
+    // Emit Socket.IO status event
+    try {
+      getIO().emit('esp32_status', statusPayload);
+    } catch (e) {
+      // ignore if socket service is not loaded
+    }
     
     res.status(200).json({ success: true, message: 'Heartbeat registered.' });
   } catch (error: any) {

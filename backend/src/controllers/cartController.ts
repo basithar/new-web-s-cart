@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { getCartDoc, saveCartDoc } from '../config/firebase';
+import { getCartDoc, saveCartDoc, rtdb } from '../config/firebase';
+import { ref, set } from 'firebase/database';
+import { emitCartUpdate } from '../services/socketService';
 
 // Hardcoded Items Database
 export const itemsDB: { [key: string]: { name: string; price: number; weight: number } } = {
@@ -128,6 +130,7 @@ export const scanRfidCard = async (req: Request, res: Response) => {
     cart.lastUpdated = new Date().toISOString();
 
     await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
 
     res.status(200).json({
       success: true,
@@ -173,6 +176,7 @@ export const removeItemFromCart = async (req: Request, res: Response) => {
     cart.lastUpdated = new Date().toISOString();
 
     await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
 
     res.status(200).json({
       success: true,
@@ -208,6 +212,7 @@ export const stopShoppingSession = async (req: Request, res: Response) => {
       cart.lastUpdated = new Date().toISOString();
       
       await saveCartDoc(cartId, cart);
+      emitCartUpdate(cartId, cart);
       
       return res.status(200).json({
         weightMatch: true,
@@ -221,6 +226,7 @@ export const stopShoppingSession = async (req: Request, res: Response) => {
       cart.lastUpdated = new Date().toISOString();
 
       await saveCartDoc(cartId, cart);
+      emitCartUpdate(cartId, cart);
 
       return res.status(200).json({
         weightMatch: false,
@@ -247,6 +253,30 @@ export const postHeartbeat = async (req: Request, res: Response) => {
 
     await saveCartDoc(cartId, cart);
 
+    // Sync ESP32 connection state with Realtime Database and Firestore status doc
+    try {
+      const { wifiStatus = 'Connected', rssi = -50 } = req.body;
+      const statusPayload = {
+        connected: true,
+        wifiStatus,
+        rssi,
+        lastActive: new Date().toISOString(),
+        currentShoppingSession: cartId,
+        lastWeightReading: Number(weight)
+      };
+      
+      // Update RTDB
+      if (rtdb) {
+        await set(ref(rtdb, 'esp32Status'), statusPayload);
+      }
+      
+      // Update Firestore
+      const { esp32Service } = require('../services/esp32Service');
+      await esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, Number(weight));
+    } catch (e) {
+      console.error('Failed to sync esp32Status in postHeartbeat:', e);
+    }
+
     res.status(200).json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -265,8 +295,107 @@ export const payCart = async (req: Request, res: Response) => {
     cart.lastUpdated = new Date().toISOString();
 
     await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
 
     res.status(200).json({ success: true, message: "Payment successful" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 7. POST /api/cart/start
+export const startCart = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001' } = req.body;
+    const defaultCart = {
+      cartId,
+      status: 'shopping',
+      budget: 3500,
+      remainingBudget: 3500,
+      totalPrice: 0,
+      totalWeight: 0,
+      physicalWeight: 0,
+      weightMatch: false,
+      items: [],
+      lastUpdated: new Date().toISOString(),
+      lastSeen: new Date().toISOString()
+    };
+    await saveCartDoc(cartId, defaultCart);
+    emitCartUpdate(cartId, defaultCart);
+
+    res.status(200).json({ success: true, cart: defaultCart });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 8. POST /api/cart/budget
+export const updateCartBudget = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001', budget } = req.body;
+    const cart = await fetchCartDoc(cartId);
+    cart.budget = Number(budget);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
+
+    res.status(200).json({ success: true, cart });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 9. POST /api/cart/quantity
+export const updateCartItemQuantity = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001', productId, quantity } = req.body;
+    const cart = await fetchCartDoc(cartId);
+
+    const itemTemplate = itemsDB[productId] || Object.values(itemsDB).find(i => i.name === productId);
+    const uid = productId;
+
+    // Remove all existing instances of this item
+    cart.items = (cart.items || []).filter((item: any) => item.uid !== uid);
+
+    if (quantity > 0 && itemTemplate) {
+      for (let i = 0; i < quantity; i++) {
+        cart.items.push({
+          uid,
+          name: itemTemplate.name,
+          price: itemTemplate.price,
+          weight: itemTemplate.weight
+        });
+      }
+    }
+
+    cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + item.price, 0);
+    cart.totalWeight = cart.items.reduce((sum: number, item: any) => sum + item.weight, 0);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
+
+    res.status(200).json({ success: true, cart });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 10. POST /api/cart/resume
+export const resumeCartSession = async (req: Request, res: Response) => {
+  try {
+    const { cartId = 'CART_001' } = req.body;
+    const cart = await fetchCartDoc(cartId);
+    cart.status = 'shopping';
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
+
+    res.status(200).json({ success: true, cart });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

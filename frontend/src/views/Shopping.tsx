@@ -41,121 +41,18 @@ const Shopping: React.FC = () => {
 
   const { 
     cart, loading, updateItemQuantity,
-    startShopping, stopShopping, resumeShopping
+    startShopping, stopShopping, resumeShopping, esp32Status
   } = useCart();
 
-  // Presentation Simulation States
-  const [isSimulated, setIsSimulated] = useState<boolean>(() => {
-    return localStorage.getItem('esp32_simulated') === 'true';
-  });
-  const [simulatedCheckoutStep, setSimulatedCheckoutStep] = useState<'none' | 'form' | 'processing' | 'success'>(() => {
-    return (localStorage.getItem('esp32_simulated') === 'true' && isStepCheckoutParam) ? 'form' : 'none';
-  });
-
-  const [cardholderName, setCardholderName] = useState('Mr.B Smart Customer');
-  const [cardNumber, setCardNumber] = useState('4000 1234 5678 9010');
-  const [cardExpiry, setCardExpiry] = useState('12/29');
-  const [cardCvv, setCardCvv] = useState('123');
-  const [paymentProgress, setPaymentProgress] = useState(0);
-  const [paymentStep, setPaymentStep] = useState('Connecting to Payment Server...');
-
-  const toggleSimulation = (val: boolean) => {
-    setIsSimulated(val);
-    if (val) {
-      localStorage.setItem('esp32_simulated', 'true');
-    } else {
-      localStorage.removeItem('esp32_simulated');
-    }
-  };
+  // Heartbeat online check timestamp timer
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (isSimulated && isStepCheckoutParam) {
-      setSimulatedCheckoutStep('form');
-    } else if (!isStepCheckoutParam && simulatedCheckoutStep !== 'success') {
-      setSimulatedCheckoutStep('none');
-    }
-  }, [location.search, isSimulated]);
-
-  // Simulated Payment Processing Loop
-  useEffect(() => {
-    if (simulatedCheckoutStep !== 'processing') return;
-
     const interval = setInterval(() => {
-      setPaymentProgress((prev) => {
-        const next = prev + 5;
-        if (next >= 100) {
-          clearInterval(interval);
-          setSimulatedCheckoutStep('success');
-          return 100;
-        }
-
-        // Update progress step description
-        if (next < 35) {
-          setPaymentStep('Connecting to Payment Server...');
-        } else if (next < 75) {
-          setPaymentStep('Verifying Card Security Credentials...');
-        } else {
-          setPaymentStep('Payment Approved! Finalizing Order...');
-        }
-
-        return next;
-      });
-    }, 100);
-
+      setNow(Date.now());
+    }, 1000);
     return () => clearInterval(interval);
-  }, [simulatedCheckoutStep]);
-
-  // Simulated Cart containing Maliban Biscuit, Brown Sugar, LUX Soap
-  const simulatedCart = {
-    cartId: 'CART_001',
-    status: (simulatedCheckoutStep === 'success' ? 'completed' : 'active') as any,
-    budget: 1000,
-    totalAmount: 550,
-    expectedWeight: 800,
-    physicalWeight: 800,
-    weightMismatch: false,
-    items: [
-      {
-        product: {
-          _id: 'prod_1',
-          uid: 'A5480D01',
-          name: 'Maliban Chocolate Biscuit',
-          price: 240,
-          weight: 200,
-          stock: 100,
-          category: 'Biscuits',
-          imageUrl: 'https://images.unsplash.com/photo-1558961309-dbdf71799f18?w=300'
-        },
-        quantity: 1
-      },
-      {
-        product: {
-          _id: 'prod_2',
-          uid: 'B6930D01',
-          name: 'Brown Sugar',
-          price: 140,
-          weight: 500,
-          stock: 100,
-          category: 'General',
-          imageUrl: 'https://images.unsplash.com/photo-1596450514966-a12b3b01be7f?w=300'
-        },
-        quantity: 1
-      },
-      {
-        product: {
-          _id: 'prod_3',
-          uid: '5DF03806',
-          name: 'LUX Soap',
-          price: 170,
-          weight: 100,
-          stock: 100,
-          category: 'Personal Care',
-          imageUrl: 'https://images.unsplash.com/photo-1607006342411-9a3363d63b36?w=300'
-        },
-        quantity: 1
-      }
-    ]
-  };
+  }, []);
 
   const { socket } = useSocket();
   const [checkoutStatus, setCheckoutStatus] = useState<string>('');
@@ -205,7 +102,7 @@ const Shopping: React.FC = () => {
 
 
 
-  if (loading && !cart && !isSimulated) {
+  if (loading && !cart) {
     return (
       <div className="space-y-6 text-theme-text">
         <div className="h-20 skeleton-shimmer"></div>
@@ -217,40 +114,45 @@ const Shopping: React.FC = () => {
     );
   }
 
+  // Heartbeat online check timestamp calculations
+  const lastActiveTimestamp = esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  const isOnline = (() => {
+    if (!lastActiveTimestamp) return false;
+    const lastActiveTime = new Date(lastActiveTimestamp).getTime();
+    return (now - lastActiveTime) < 20000;
+  })();
+
   // Welcome/Start Session layout when cart is null, pending, or completed
-  if (!isSimulated && (!cart || (cart.status !== 'active' && cart.status !== 'stopped' && cart.status !== 'ready_for_payment' && cart.status !== 'weight_mismatch'))) {
+  if (!cart || (cart.status !== 'shopping' && cart.status !== 'active' && cart.status !== 'stopped' && cart.status !== 'ready_for_payment' && cart.status !== 'weight_mismatch')) {
     return (
       <div className="max-w-md mx-auto text-center space-y-6 pt-12 text-theme-text transition-colors duration-300">
         <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto shadow-md">
           <ShoppingBag className="w-8 h-8 text-emerald-500 animate-bounce-slow" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-extrabold text-theme-text">Initialize Your Smart Shopping Session</h2>
+          <h2 className="text-2xl font-extrabold text-theme-text uppercase">Start Shopping Session</h2>
           <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto leading-relaxed">
-            Simulate connecting the HX711 load cell weight telemetry and MFRC522 RFID tag scanner for Mr.B Smart Shopping Cart presentation.
+            Initialize your live shopping session. Once started, drop items into the cart to scan them via RFID and verify weights in real-time.
           </p>
         </div>
         <button
-          onClick={() => {
-            toggleSimulation(true);
-            setSimulatedCheckoutStep('none');
-          }}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+          onClick={startShopping}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
         >
-          <Play className="w-4 h-4 fill-white" /> Connect ESP32 (Presentation Mode)
+          <Play className="w-4 h-4 fill-white" /> Start Live Shopping Session
         </button>
       </div>
     );
   }
 
-  const currentCart = (isSimulated ? simulatedCart : cart) as CartData;
+  const currentCart = cart as CartData;
 
   const items = currentCart.items || [];
   const total = currentCart.totalAmount || 0;
   const budget = currentCart.budget || 0;
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
-  const isStopped = isSimulated ? false : (currentCart.status === 'stopped' || currentCart.status === 'ready_for_payment' || currentCart.status === 'weight_mismatch');
+  const isStopped = currentCart.status === 'stopped' || currentCart.status === 'ready_for_payment' || currentCart.status === 'weight_mismatch';
 
   const filteredCatalog = products.filter((p) =>
     p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
@@ -261,7 +163,7 @@ const Shopping: React.FC = () => {
     <div className="space-y-6 text-theme-text transition-colors duration-300">
       
       {/* Weight is Matched Banner */}
-      {isSimulated && (
+      {currentCart.weightMatch && (
         <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-fade-in">
           <CheckCircle className="w-6 h-6 text-emerald-500 shrink-0 animate-bounce" />
           <span>Weight is Matched! ✅</span>
@@ -277,74 +179,51 @@ const Shopping: React.FC = () => {
       )}
       
       {/* 1. Shopping Session Banner (Telemetry Notifications) */}
-      {isSimulated ? (
-        <div className="p-5 rounded-3xl border border-blue-500/20 bg-blue-500/5 text-blue-600 dark:text-blue-400">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-            <div className="flex items-center gap-3.5 flex-col sm:flex-row">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center shadow-md bg-blue-600 text-white animate-pulse">
+      <div className={`p-5 rounded-3xl border transition-all ${
+        isStopped 
+          ? (currentCart.weightMismatch 
+              ? 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400' 
+              : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400')
+          : 'bg-blue-500/5 border-blue-500/20 text-blue-600 dark:text-blue-400'
+      }`}>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <div className="flex items-center gap-3.5 flex-col sm:flex-row">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shadow-md ${
+              isStopped 
+                ? (currentCart.weightMismatch ? 'bg-rose-650 text-white' : 'bg-emerald-600 text-white')
+                : 'bg-blue-600 text-white animate-pulse'
+            }`}>
+              {isStopped ? (
+                currentCart.weightMismatch ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />
+              ) : (
                 <Radio className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-extrabold text-sm text-theme-text uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1.5 text-left">
-                  SESSION STATUS: ESP32 CONNECTED [Simulated]
-                </h3>
-                <p className="text-[11px] opacity-80 mt-1 font-medium leading-normal text-left">
-                  RFID scanner and scale are online. Drop items in cart to automatically register them.
-                </p>
-              </div>
+              )}
             </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                onClick={() => {
-                  toggleSimulation(false);
-                  setSimulatedCheckoutStep('none');
-                }}
-                className="px-4 py-2 rounded-xl bg-theme-bg border border-theme-border text-xs font-bold text-theme-text hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Disconnect ESP32
-              </button>
+
+            <div>
+              <h3 className="font-extrabold text-sm text-theme-text uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1.5 flex-wrap">
+                Session Status: {isStopped ? (currentCart.weightMismatch ? 'Weight Mismatch' : 'VERIFIED') : 'Shopping Active'}
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  isOnline 
+                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                    : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                }`}>
+                  ESP32 Status: {isOnline ? 'ONLINE 🟢' : 'OFFLINE 🔴'}
+                </span>
+              </h3>
+              <p className="text-[11px] opacity-80 mt-1 font-medium leading-normal">
+                {isStopped ? (
+                  currentCart.weightMismatch 
+                    ? 'Weight mismatch detected. Please rescan or remove unscanned items to continue.'
+                    : 'Cart weight verified successfully. You are cleared to proceed to checkout!'
+                ) : (
+                  'RFID scanner and scale are online. Drop items in cart to automatically register them.'
+                )}
+              </p>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className={`p-5 rounded-3xl border transition-all ${
-          isStopped 
-            ? (currentCart.weightMismatch 
-                ? 'bg-rose-500/5 border-rose-500/20 text-rose-600 dark:text-rose-400' 
-                : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400')
-            : 'bg-blue-500/5 border-blue-500/20 text-blue-600 dark:text-blue-400'
-        }`}>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-            <div className="flex items-center gap-3.5 flex-col sm:flex-row">
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shadow-md ${
-                isStopped 
-                  ? (currentCart.weightMismatch ? 'bg-rose-650 text-white' : 'bg-emerald-600 text-white')
-                  : 'bg-blue-600 text-white animate-pulse'
-              }`}>
-                {isStopped ? (
-                  currentCart.weightMismatch ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />
-                ) : (
-                  <Radio className="w-5 h-5" />
-                )}
-              </div>
 
-              <div>
-                <h3 className="font-extrabold text-sm text-theme-text uppercase tracking-wider flex items-center justify-center sm:justify-start gap-1.5">
-                  Session Status: {isStopped ? (currentCart.weightMismatch ? 'Weight Mismatch' : 'VERIFIED') : 'Shopping Active'}
-                </h3>
-                <p className="text-[11px] opacity-80 mt-1 font-medium leading-normal">
-                  {isStopped ? (
-                    currentCart.weightMismatch 
-                      ? 'Weight mismatch detected. Please rescan or remove unscanned items to continue.'
-                      : 'Cart weight verified successfully. You are cleared to proceed to checkout!'
-                  ) : (
-                    'RFID scanner and scale are online. Drop items in cart to automatically register them.'
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-2 shrink-0">
+          <div className="flex gap-2 shrink-0">
               {isStopped ? (
                 <button
                   onClick={() => resumeShopping()}
@@ -368,7 +247,6 @@ const Shopping: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
 
       {/* 2. Dashboard Cards (Budget KPI Widgets) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -437,163 +315,8 @@ const Shopping: React.FC = () => {
         {/* Left Columns: Cart items */}
         <div className="lg:col-span-2 space-y-6">
           <div className="glass-panel rounded-3xl p-6 bg-theme-card border-theme-border relative overflow-hidden">
-            {isSimulated && simulatedCheckoutStep !== 'none' ? (
-              /* Simulated Checkout Panel Overlay */
-              <div className="space-y-6">
-                {simulatedCheckoutStep === 'form' && (
-                  <div className="space-y-6 text-left">
-                    <div>
-                      <h4 className="font-extrabold text-sm text-theme-text flex items-center gap-2">
-                        <CreditCard className="text-emerald-500" /> Supermarket POS Checkout Gateway
-                      </h4>
-                      <p className="text-xs text-slate-400 mt-1">Complete the customer payment simulation below.</p>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wide">Cardholder Name</label>
-                        <input
-                          type="text"
-                          value={cardholderName}
-                          onChange={(e) => setCardholderName(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-theme-bg border border-theme-border text-xs text-theme-text focus:outline-none focus:border-emerald-500 font-bold"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wide">Card Number</label>
-                        <input
-                          type="text"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-theme-bg border border-theme-border text-xs text-theme-text focus:outline-none focus:border-emerald-500 font-mono font-bold"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wide">Expiry Date (MM/YY)</label>
-                          <input
-                            type="text"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl bg-theme-bg border border-theme-border text-xs text-theme-text focus:outline-none focus:border-emerald-500 font-mono text-center font-bold"
-                          />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wide">CVV</label>
-                          <input
-                            type="password"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl bg-theme-bg border border-theme-border text-xs text-theme-text focus:outline-none focus:border-emerald-500 font-mono text-center font-bold"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-theme-border pt-4 space-y-3">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-400">Paying Amount:</span>
-                        <span className="text-sm font-extrabold text-theme-text">Rs. 550</span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setSimulatedCheckoutStep('processing');
-                          setPaymentProgress(0);
-                          setPaymentStep('Connecting to Payment Server...');
-                        }}
-                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg active:scale-95 flex items-center justify-center gap-1.5"
-                      >
-                        Proceed to Checkout (Process Payment)
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {simulatedCheckoutStep === 'processing' && (
-                  <div className="py-8 text-center space-y-6">
-                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
-                      <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="text-lg font-extrabold text-theme-text animate-pulse">Processing Payment...</h3>
-                      <p className="text-xs text-slate-400 font-bold">{paymentStep}</p>
-                    </div>
-                    
-                    <div className="space-y-1.5 max-w-xs mx-auto">
-                      <div className="flex justify-between text-[10px] font-bold text-slate-455">
-                        <span>Transaction Progress</span>
-                        <span>{paymentProgress}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
-                        <div 
-                          className="h-full bg-emerald-500 rounded-full transition-all duration-150 ease-out animate-pulse" 
-                          style={{ width: `${paymentProgress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {simulatedCheckoutStep === 'success' && (
-                  <div className="space-y-6 text-left">
-                    <div className="text-center space-y-2 animate-bounce-slow">
-                      <div className="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto shadow-md border border-emerald-500/20">
-                        <CheckCircle className="w-8 h-8 text-emerald-500 shrink-0" />
-                      </div>
-                      <h3 className="text-xl font-extrabold text-theme-text">Payment Successful!</h3>
-                      <p className="text-[11px] text-slate-450 font-semibold">Your retail transaction was processed successfully.</p>
-                    </div>
-
-                    <div className="p-4 rounded-2xl bg-theme-bg border border-theme-border space-y-4 text-xs font-semibold">
-                      <div className="flex justify-between items-center pb-2 border-b border-theme-border/50">
-                        <span className="font-bold text-slate-455">Payment Ref</span>
-                        <span className="font-mono font-bold text-slate-500">TXN-PRESENTATION-101</span>
-                      </div>
-
-                      <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                        {simulatedCart.items.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-center text-[11px]">
-                            <span className="text-slate-500 font-medium">{item.product.name}</span>
-                            <span className="font-mono font-bold">Rs. {item.product.price}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="border-t border-theme-border/50 pt-3 space-y-1.5">
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-slate-400">Total weight:</span>
-                          <span className="font-mono font-bold">800g</span>
-                        </div>
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span className="text-slate-400">Payment method:</span>
-                          <span className="font-bold uppercase text-emerald-600 dark:text-emerald-400">Card</span>
-                        </div>
-                        <div className="flex justify-between items-center font-extrabold text-sm pt-1 border-t border-theme-border/20">
-                          <span className="text-theme-text">Total Paid:</span>
-                          <span className="text-theme-text">Rs. 550</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        toggleSimulation(false);
-                        setSimulatedCheckoutStep('none');
-                        navigate('/shopping');
-                      }}
-                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs uppercase tracking-wider shadow-md active:scale-95"
-                    >
-                      Done & Reset View
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
               <>
+
                 {isStopped && (
                   <div className="absolute inset-0 bg-slate-900/5 dark:bg-slate-955/20 backdrop-blur-[0.5px] z-10 flex items-center justify-center pointer-events-none select-none">
                     <div className="px-3.5 py-1.5 rounded-full bg-slate-900/80 dark:bg-slate-800/95 border border-slate-700 text-white font-extrabold text-[9px] uppercase tracking-widest flex items-center gap-1.5 shadow-md">
@@ -717,25 +440,9 @@ const Shopping: React.FC = () => {
                   </div>
                 )}
               </>
-            )}
           </div>
 
-          {/* Simulated Proceed to Payment button overlay when on shopping view */}
-          {isSimulated && simulatedCheckoutStep === 'none' && (
-            <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 p-5 rounded-3xl bg-slate-50/50 dark:bg-slate-900/25 border border-theme-border text-xs">
-              <div className="text-left space-y-0.5">
-                <p className="text-xs text-slate-400">Total Price: <strong className="text-theme-text text-sm">Rs. 550</strong></p>
-                <p className="text-xs text-slate-400">Total Weight: <strong className="text-theme-text text-sm">800g</strong></p>
-              </div>
-              
-              <button
-                onClick={() => setSimulatedCheckoutStep('form')}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wide flex items-center justify-center gap-1.5 transition-all shadow-md bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white shadow-emerald-500/20 active:scale-95"
-              >
-                <CreditCard className="w-4 h-4" /> Proceed to Payment <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+
         </div>
 
         {/* Right Columns: Scanning methods & Catalog */}

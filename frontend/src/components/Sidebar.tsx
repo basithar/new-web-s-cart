@@ -93,31 +93,19 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
         <nav className="mt-6 px-4 space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isSimulated = localStorage.getItem('esp32_simulated') === 'true';
             const isDashboard = item.path === '/admin';
-            const isCheckoutSimulated = isSimulated && item.path === '/checkout';
-            const targetPath = isCheckoutSimulated ? '/shopping?step=checkout' : item.path;
+            const targetPath = item.path;
             
             return (
               <NavLink
                 key={item.path}
                 to={targetPath}
                 end={isDashboard}
-                className={({ isActive }) => {
-                  const queryParams = new URLSearchParams(window.location.search);
-                  const isStepCheckout = queryParams.get('step') === 'checkout';
-                  let active = isActive;
-                  if (item.path === '/shopping') {
-                    active = isActive && !isStepCheckout;
-                  } else if (item.path === '/checkout') {
-                    active = isActive || (isSimulated && isStepCheckout);
-                  }
-                  return `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
-                    active
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/15'
-                      : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40'
-                  }`;
-                }}
+                className={({ isActive }) => `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
+                  isActive
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/15'
+                    : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40'
+                }`}
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 {!collapsed && <span>{item.name}</span>}
