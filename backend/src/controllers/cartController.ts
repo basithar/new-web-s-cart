@@ -110,39 +110,30 @@ export const scanRfidCard = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Item not found in database' });
     }
 
-    const cart = await fetchCartDoc(cartId);
-    
-    // Add item to items array
-    cart.items.push({
-      uid,
-      name: itemTemplate.name,
-      price: itemTemplate.price,
-      weight: itemTemplate.weight
-    });
-
-    // Recompute aggregates
-    cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
-    cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
-    cart.remainingBudget = cart.budget - cart.totalPrice;
-    
-    cart.status = 'shopping';
-    cart.physicalWeight = Number(weight);
-    cart.lastUpdated = new Date().toISOString();
-
-    await saveCartDoc(cartId, cart);
-    emitCartUpdate(cartId, cart);
+    // In Batch Processing Mode, individual scans DO NOT update the active cart items.
+    // They are only registered in scan logs.
+    try {
+      const { esp32Service } = require('../services/esp32Service');
+      await esp32Service.registerScan(uid);
+      
+      // Update telemetry reading on esp32Status
+      if (rtdb) {
+        await set(ref(rtdb, 'esp32Status/lastRfidUid'), uid);
+        await set(ref(rtdb, 'esp32Status/lastScanTime'), new Date().toLocaleTimeString());
+        await set(ref(rtdb, 'esp32Status/lastWeightReading'), Number(weight));
+        await set(ref(rtdb, 'esp32Status/lastActive'), new Date().toISOString());
+      }
+    } catch (e) {
+      console.error('Failed to register scan logs:', e);
+    }
 
     res.status(200).json({
       success: true,
+      message: 'Item registered in log (Batch mode active - cart unmodified)',
       item: {
         name: itemTemplate.name,
         price: itemTemplate.price,
         weight: itemTemplate.weight
-      },
-      cart: {
-        totalPrice: cart.totalPrice,
-        totalWeight: cart.totalWeight,
-        remainingBudget: cart.remainingBudget
       }
     });
   } catch (error: any) {
@@ -159,31 +150,19 @@ export const removeItemFromCart = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Missing RFID UID parameter.' });
     }
 
-    const cart = await fetchCartDoc(cartId);
-    
-    // Find index of item in cart array
-    const itemIndex = cart.items.findIndex(item => item.uid === uid);
-    if (itemIndex > -1) {
-      cart.items.splice(itemIndex, 1);
+    // Update telemetry reading on esp32Status
+    try {
+      if (rtdb) {
+        await set(ref(rtdb, 'esp32Status/lastWeightReading'), Number(weight));
+        await set(ref(rtdb, 'esp32Status/lastActive'), new Date().toISOString());
+      }
+    } catch (e) {
+      console.error('Failed to sync esp32Status in remove:', e);
     }
-
-    // Recompute aggregates
-    cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
-    cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
-    cart.remainingBudget = cart.budget - cart.totalPrice;
-    
-    cart.physicalWeight = Number(weight);
-    cart.lastUpdated = new Date().toISOString();
-
-    await saveCartDoc(cartId, cart);
-    emitCartUpdate(cartId, cart);
 
     res.status(200).json({
       success: true,
-      cart: {
-        totalPrice: cart.totalPrice,
-        totalWeight: cart.totalWeight
-      }
+      message: 'Remove registered (Batch mode active - cart unmodified)'
     });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -394,6 +373,74 @@ export const resumeCartSession = async (req: Request, res: Response) => {
 
     await saveCartDoc(cartId, cart);
     emitCartUpdate(cartId, cart);
+
+    res.status(200).json({ success: true, cart });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// 11. POST /api/cart/batch-checkout
+export const batchCheckoutCart = async (req: Request, res: Response) => {
+  try {
+    const { deviceId = 'CART_001', physicalWeight = 0, items = [] } = req.body;
+    const cartId = deviceId;
+
+    const cart = await fetchCartDoc(cartId);
+    
+    // Map items array
+    const cartItems = [];
+    for (const uid of items) {
+      const template = itemsDB[uid] || Object.values(itemsDB).find(i => i.name === uid);
+      if (template) {
+        cartItems.push({
+          uid,
+          name: template.name,
+          price: template.price,
+          weight: template.weight
+        });
+      }
+    }
+
+    cart.items = cartItems;
+    cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + item.price, 0);
+    cart.totalWeight = cart.items.reduce((sum: number, item: any) => sum + item.weight, 0);
+    cart.remainingBudget = cart.budget - cart.totalPrice;
+    
+    cart.physicalWeight = Number(physicalWeight);
+    
+    // Exact or tolerance check (25g)
+    const weightDifference = Math.abs(cart.totalWeight - cart.physicalWeight);
+    const weightMatch = weightDifference <= 25;
+    cart.weightMatch = weightMatch;
+    
+    // Transition status to checkout
+    cart.status = 'checkout';
+    cart.lastUpdated = new Date().toISOString();
+
+    await saveCartDoc(cartId, cart);
+    emitCartUpdate(cartId, cart);
+
+    // Sync ESP32 connection state
+    try {
+      const statusPayload = {
+        connected: true,
+        wifiStatus: 'Connected',
+        rssi: -50,
+        lastActive: new Date().toISOString(),
+        currentShoppingSession: cartId,
+        lastWeightReading: Number(physicalWeight),
+        lastRfidUid: items.length > 0 ? items[items.length - 1] : ''
+      };
+      if (rtdb) {
+        await set(ref(rtdb, 'esp32Status'), statusPayload);
+      }
+      
+      const { esp32Service } = require('../services/esp32Service');
+      await esp32Service.updateHeartbeat('Connected', -50, cartId, Number(physicalWeight));
+    } catch (e) {
+      console.error('Failed to sync esp32Status in batchCheckout:', e);
+    }
 
     res.status(200).json({ success: true, cart });
   } catch (error: any) {

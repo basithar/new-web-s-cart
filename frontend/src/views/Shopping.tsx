@@ -100,6 +100,16 @@ const Shopping: React.FC = () => {
     fetchProducts();
   }, []);
 
+  // Auto transition to checkout when weight matches in batch checkout mode
+  useEffect(() => {
+    if (cart && cart.status === 'checkout' && cart.weightMatch) {
+      const timer = setTimeout(() => {
+        navigate('/checkout');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [cart?.status, cart?.weightMatch, navigate]);
+
 
 
   if (loading && !cart) {

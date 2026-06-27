@@ -9,7 +9,8 @@ import {
   startCart,
   updateCartBudget,
   updateCartItemQuantity,
-  resumeCartSession
+  resumeCartSession,
+  batchCheckoutCart
 } from '../controllers/cartController';
 import { postHeartbeatLegacy, testScanLegacy } from '../controllers/esp32Controller';
 import { getScanHistory } from '../controllers/rfidController';
@@ -32,6 +33,7 @@ router.post('/cart/start', startCart);
 router.post('/cart/budget', updateCartBudget);
 router.post('/cart/quantity', updateCartItemQuantity);
 router.post('/cart/resume', resumeCartSession);
+router.post('/cart/batch-checkout', batchCheckoutCart);
 
 // --- Legacy Hardware Support Routes (From Step 10/11) ---
 router.post('/heartbeat', postHeartbeatLegacy);
