@@ -99,7 +99,7 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
                   : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
               }`}
             >
-              <Cpu className={`w-3.5 h-3.5 ${isOnline ? 'animate-pulse text-emerald-550' : 'text-rose-500'}`} />
+              <Cpu className={`w-3.5 h-3.5 ${isOnline ? 'animate-pulse text-emerald-500' : 'text-rose-500'}`} />
               <span className="hidden lg:inline">ESP32 Monitor:</span>
               <span>{isOnline ? 'Connected 🟢' : 'Disconnected 🔴'}</span>
             </button>

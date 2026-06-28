@@ -228,14 +228,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(interval);
   }, []);
 
-  // Real-time updates via Firebase Realtime Database status changes
+  // Real-time updates via Firebase Realtime Database status changes under kiosk_status/CART_001
   useEffect(() => {
     if (!rtdb) return;
-    const statusRef = ref(rtdb, 'esp32Status');
+    const statusRef = ref(rtdb, `kiosk_status/${cartId}`);
     const unsubscribe = onValue(statusRef, (snapshot) => {
       if (snapshot.exists()) {
         const val = snapshot.val();
-        console.log('🔥 ESP32 Status updated via RTDB:', val);
+        console.log('🔥 ESP32 Status updated via RTDB kiosk_status:', val);
         setEsp32Status((prev: any) => ({
           ...prev,
           ...val
@@ -245,7 +245,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [cartId]);
 
   // Real-time update listeners via Socket.IO
   useEffect(() => {

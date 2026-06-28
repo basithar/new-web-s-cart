@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
+import { rtdb } from '../firebase';
+import { ref, onValue } from 'firebase/database';
 
 import { API_URL } from '../config';
 
@@ -22,6 +24,7 @@ const ESP32Connection: React.FC = () => {
   
   // Heartbeat online check timer
   const [now, setNow] = useState(Date.now());
+  const [liveKioskStatus, setLiveKioskStatus] = useState<any>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -30,16 +33,39 @@ const ESP32Connection: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const lastActiveTimestamp = esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  // Direct Firebase Realtime Database listener on kiosk_status/CART_001
+  useEffect(() => {
+    if (!rtdb) return;
+    const statusRef = ref(rtdb, 'kiosk_status/CART_001');
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        console.log('🔥 Live Kiosk Status received:', val);
+        setLiveKioskStatus(val);
+      } else {
+        setLiveKioskStatus(null);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const lastActiveTimestamp = liveKioskStatus?.lastActive || esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  
   const isOnline = (() => {
+    if (liveKioskStatus?.connected !== undefined) {
+      if (!lastActiveTimestamp) return liveKioskStatus.connected;
+      const lastActiveTime = new Date(lastActiveTimestamp).getTime();
+      return liveKioskStatus.connected && (now - lastActiveTime) < 20000;
+    }
     if (!lastActiveTimestamp) return false;
     const lastActiveTime = new Date(lastActiveTimestamp).getTime();
     return (now - lastActiveTime) < 20000;
   })();
 
-  const lastWeight = esp32Status?.lastWeightReading !== undefined 
-    ? esp32Status.lastWeightReading 
-    : (cart?.physicalWeight || 0);
+  const lastWeight = liveKioskStatus?.lastWeightReading !== undefined 
+    ? liveKioskStatus.lastWeightReading 
+    : (esp32Status?.lastWeightReading !== undefined ? esp32Status.lastWeightReading : (cart?.physicalWeight || 0));
 
   const actualWeight = isOnline ? lastWeight : 0;
   const expectedWeight = cart?.expectedWeight || 0;
@@ -58,7 +84,9 @@ const ESP32Connection: React.FC = () => {
     return { label: 'Poor / Weak', color: 'text-rose-500' };
   };
 
-  const signal = isOnline && esp32Status ? getSignalQuality(esp32Status.rssi) : { label: 'N/A', color: 'text-slate-400' };
+  const signal = isOnline && (liveKioskStatus?.rssi !== undefined || esp32Status?.rssi !== undefined) 
+    ? getSignalQuality(liveKioskStatus?.rssi !== undefined ? liveKioskStatus.rssi : esp32Status!.rssi) 
+    : { label: 'N/A', color: 'text-slate-400' };
 
   return (
     <div className="space-y-6 text-theme-text text-left transition-colors duration-300">
@@ -79,16 +107,11 @@ const ESP32Connection: React.FC = () => {
             
             <div>
               <h3 className="text-xl font-extrabold flex items-center justify-center sm:justify-start gap-2 text-theme-text">
-                ESP32-S3 Hardware Board 
-                {isOnline ? (
-                  <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                ) : (
-                  <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-                )}
+                ESP32-S3 Hardware Board {isOnline ? '🟢' : '🔴'}
               </h3>
               <p className="text-xs opacity-80 mt-1">
                 {isOnline 
-                  ? 'Real-time telemetry and scanning stream active.' 
+                  ? 'Hardware connection online. Stream active.' 
                   : 'Hardware connection offline. Heartbeats timed out.'}
               </p>
             </div>

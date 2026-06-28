@@ -17,15 +17,16 @@ export const postHeartbeat = async (req: Request, res: Response) => {
       weight !== undefined ? Number(weight) : undefined
     );
     
-    // Sync RTDB connection status
-    const rtdbRef = ref(rtdb, 'esp32Status');
+    // Sync RTDB connection status under kiosk_status/CART_001
+    const rtdbRef = ref(rtdb, `kiosk_status/${cartId}`);
     const statusPayload = {
       connected: true,
       wifiStatus,
       rssi: Number(rssi),
       lastActive: new Date().toISOString(),
       currentShoppingSession: cartId,
-      lastWeightReading: weight !== undefined ? Number(weight) : undefined
+      lastWeightReading: weight !== undefined ? Number(weight) : undefined,
+      timestamp: Date.now()
     };
     await set(rtdbRef, statusPayload);
 
@@ -47,14 +48,15 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
     const { status, deviceId = 'CART_001' } = req.body;
     const isOnline = status === 'online';
 
-    // 1. Update Firebase RTDB status
-    const rtdbRef = ref(rtdb, 'esp32Status');
+    // 1. Update Firebase RTDB status under kiosk_status/CART_001
+    const rtdbRef = ref(rtdb, `kiosk_status/${deviceId}`);
     const statusPayload = {
       connected: isOnline,
       wifiStatus: isOnline ? 'Connected' : 'Disconnected',
       rssi: isOnline ? -50 : -100,
       lastActive: new Date().toISOString(),
       currentShoppingSession: deviceId,
+      timestamp: Date.now()
     };
     await set(rtdbRef, statusPayload);
 

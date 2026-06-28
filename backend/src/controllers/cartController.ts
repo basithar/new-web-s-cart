@@ -116,12 +116,14 @@ export const scanRfidCard = async (req: Request, res: Response) => {
       const { esp32Service } = require('../services/esp32Service');
       await esp32Service.registerScan(uid);
       
-      // Update telemetry reading on esp32Status
+      // Update telemetry reading on kiosk_status/CART_001
       if (rtdb) {
-        await set(ref(rtdb, 'esp32Status/lastRfidUid'), uid);
-        await set(ref(rtdb, 'esp32Status/lastScanTime'), new Date().toLocaleTimeString());
-        await set(ref(rtdb, 'esp32Status/lastWeightReading'), Number(weight));
-        await set(ref(rtdb, 'esp32Status/lastActive'), new Date().toISOString());
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastScanTime`), new Date().toLocaleTimeString());
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastActive`), new Date().toISOString());
+        await set(ref(rtdb, `kiosk_status/${cartId}/connected`), true);
+        await set(ref(rtdb, `kiosk_status/${cartId}/timestamp`), Date.now());
       }
     } catch (e) {
       console.error('Failed to register scan logs:', e);
@@ -150,11 +152,13 @@ export const removeItemFromCart = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Missing RFID UID parameter.' });
     }
 
-    // Update telemetry reading on esp32Status
+    // Update telemetry reading on kiosk_status/CART_001
     try {
       if (rtdb) {
-        await set(ref(rtdb, 'esp32Status/lastWeightReading'), Number(weight));
-        await set(ref(rtdb, 'esp32Status/lastActive'), new Date().toISOString());
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastActive`), new Date().toISOString());
+        await set(ref(rtdb, `kiosk_status/${cartId}/connected`), true);
+        await set(ref(rtdb, `kiosk_status/${cartId}/timestamp`), Date.now());
       }
     } catch (e) {
       console.error('Failed to sync esp32Status in remove:', e);
@@ -244,9 +248,12 @@ export const postHeartbeat = async (req: Request, res: Response) => {
         lastWeightReading: Number(weight)
       };
       
-      // Update RTDB
+      // Update RTDB under kiosk_status/CART_001
       if (rtdb) {
-        await set(ref(rtdb, 'esp32Status'), statusPayload);
+        await set(ref(rtdb, `kiosk_status/${cartId}`), {
+          ...statusPayload,
+          timestamp: Date.now()
+        });
       }
       
       // Update Firestore
@@ -433,7 +440,10 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
         lastRfidUid: items.length > 0 ? items[items.length - 1] : ''
       };
       if (rtdb) {
-        await set(ref(rtdb, 'esp32Status'), statusPayload);
+        await set(ref(rtdb, `kiosk_status/${cartId}`), {
+          ...statusPayload,
+          timestamp: Date.now()
+        });
       }
       
       const { esp32Service } = require('../services/esp32Service');
