@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getCartDoc, saveCartDoc, rtdb } from '../config/firebase';
+import { getCartDoc, saveCartDoc, rtdb, adminRtdb } from '../config/firebase';
 import { ref, set } from 'firebase/database';
 import { emitCartUpdate } from '../services/socketService';
 
@@ -117,7 +117,16 @@ export const scanRfidCard = async (req: Request, res: Response) => {
       await esp32Service.registerScan(uid);
       
       // Update telemetry reading on kiosk_status/CART_001
-      if (rtdb) {
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update({
+          lastRfidUid: uid,
+          lastScanTime: new Date().toLocaleTimeString(),
+          lastWeightReading: Number(weight),
+          lastActive: new Date().toISOString(),
+          connected: true,
+          timestamp: Date.now()
+        });
+      } else if (rtdb) {
         await set(ref(rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
         await set(ref(rtdb, `kiosk_status/${cartId}/lastScanTime`), new Date().toLocaleTimeString());
         await set(ref(rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
@@ -154,7 +163,14 @@ export const removeItemFromCart = async (req: Request, res: Response) => {
 
     // Update telemetry reading on kiosk_status/CART_001
     try {
-      if (rtdb) {
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update({
+          lastWeightReading: Number(weight),
+          lastActive: new Date().toISOString(),
+          connected: true,
+          timestamp: Date.now()
+        });
+      } else if (rtdb) {
         await set(ref(rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
         await set(ref(rtdb, `kiosk_status/${cartId}/lastActive`), new Date().toISOString());
         await set(ref(rtdb, `kiosk_status/${cartId}/connected`), true);

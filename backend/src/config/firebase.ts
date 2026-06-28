@@ -3,6 +3,7 @@ import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import { initializeApp as initAdminApp, cert as adminCert } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { getDatabase as getAdminDatabase } from 'firebase-admin/database';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -25,6 +26,7 @@ export const rtdb = getDatabase(app);
 
 // Initialize Firebase Admin SDK if service account is available in environment
 let adminDb: any = null;
+let adminRtdb: any = null;
 let isUsingAdminSDK = false;
 
 try {
@@ -42,6 +44,7 @@ try {
       databaseURL: firebaseConfig.databaseURL
     });
     adminDb = getAdminFirestore();
+    adminRtdb = getAdminDatabase();
     isUsingAdminSDK = true;
     console.log('🔥 Firebase Admin SDK initialized successfully!');
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -51,6 +54,7 @@ try {
       databaseURL: firebaseConfig.databaseURL
     });
     adminDb = getAdminFirestore();
+    adminRtdb = getAdminDatabase();
     isUsingAdminSDK = true;
     console.log('🔥 Firebase Admin SDK initialized from service account JSON string!');
   } else {
@@ -81,5 +85,5 @@ export const saveCartDoc = async (cartId: string, data: any): Promise<void> => {
   }
 };
 
-export { adminDb, isUsingAdminSDK };
+export { adminDb, adminRtdb, isUsingAdminSDK };
 export default app;
