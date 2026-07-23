@@ -496,63 +496,84 @@ export const resumeCartSession = async (req: Request, res: Response) => {
 // 11. POST /api/cart/batch-checkout
 export const batchCheckoutCart = async (req: Request, res: Response) => {
   try {
-    const { deviceId = 'CART_001', physicalWeight = 0, items = [] } = req.body;
+    const { deviceId = 'CART_001', physicalWeight, expectedWeight, items = [] } = req.body;
     const cartId = deviceId;
 
-    const cart = await fetchCartDoc(cartId);
+    const pWeight = Number(physicalWeight || 0);
     
-    // Map items array
-    const cartItems = [];
-    for (const uid of items) {
-      const template = itemsDB[uid] || Object.values(itemsDB).find(i => i.name === uid);
-      if (template) {
-        cartItems.push({
-          uid,
-          name: template.name,
-          price: template.price,
-          weight: template.weight
-        });
+    // Fetch cart document safely without throwing 500 on offline/network errors
+    let cart: CartDocument | null = null;
+    try {
+      cart = await fetchCartDoc(cartId);
+    } catch (cartErr) {
+      console.warn('⚠️ Could not fetch cart doc from DB in batchCheckout:', cartErr);
+    }
+
+    // Determine expected weight: prefer explicit expectedWeight from payload, or calculate from items/cart
+    let eWeight: number;
+
+    if (expectedWeight !== undefined && expectedWeight !== null) {
+      eWeight = Number(expectedWeight);
+    } else if (Array.isArray(items) && items.length > 0) {
+      const cartItems = [];
+      for (const uid of items) {
+        const template = itemsDB[uid] || Object.values(itemsDB).find(i => i.name === uid);
+        if (template) {
+          cartItems.push({
+            uid,
+            name: template.name,
+            price: template.price,
+            weight: template.weight
+          });
+        }
+      }
+      eWeight = cartItems.reduce((sum, item) => sum + item.weight, 0);
+      if (cart) {
+        cart.items = cartItems;
+        cart.totalPrice = cartItems.reduce((sum, item) => sum + item.price, 0);
+        cart.totalWeight = eWeight;
+      }
+    } else if (cart) {
+      eWeight = Number(cart.totalWeight || 0);
+    } else {
+      eWeight = 0;
+    }
+
+    // Weight difference tolerance check (<= 50g difference)
+    const weightDifference = Math.abs(pWeight - eWeight);
+    const weightMatch = weightDifference <= 50;
+    const checkoutStatus = weightMatch ? 'approved' : 'mismatch';
+
+    if (cart) {
+      cart.physicalWeight = pWeight;
+      cart.weightMatch = weightMatch;
+      (cart as any).checkout_status = checkoutStatus;
+      cart.status = 'checkout';
+      cart.lastUpdated = new Date().toISOString();
+      try {
+        await saveCartDoc(cartId, cart);
+        emitCartUpdate(cartId, cart);
+      } catch (err) {
+        console.warn('⚠️ Failed to save cart doc:', err);
       }
     }
 
-    cart.items = cartItems;
-    cart.totalPrice = cart.items.reduce((sum: number, item: any) => sum + item.price, 0);
-    cart.totalWeight = cart.items.reduce((sum: number, item: any) => sum + item.weight, 0);
-    cart.remainingBudget = cart.budget - cart.totalPrice;
-    
-    cart.physicalWeight = Number(physicalWeight);
-    
-    // Weight tolerance check (<= 50g difference as per hardware spec)
-    const weightDifference = Math.abs(cart.totalWeight - cart.physicalWeight);
-    const weightMatch = weightDifference <= 50;
-    cart.weightMatch = weightMatch;
-    
-    const checkoutStatus = weightMatch ? 'approved' : 'mismatch';
-    (cart as any).checkout_status = checkoutStatus;
-    
-    // Transition status to checkout
-    cart.status = 'checkout';
-    cart.lastUpdated = new Date().toISOString();
-
-    await saveCartDoc(cartId, cart);
-    emitCartUpdate(cartId, cart);
-
-    // Sync ESP32 connection state & checkout_status in RTDB
+    // Sync Firebase Realtime Database status under kiosk_status/CART_001
     try {
       const statusPayload = {
         connected: true,
         wifiStatus: 'Connected',
         rssi: -50,
+        last_active: new Date().toISOString(),
         lastActive: new Date().toISOString(),
         currentShoppingSession: cartId,
-        lastWeightReading: Number(physicalWeight),
-        lastRfidUid: items.length > 0 ? items[items.length - 1] : '',
+        lastWeightReading: pWeight,
+        physicalWeight: pWeight,
+        expectedWeight: eWeight,
+        lastRfidUid: Array.isArray(items) && items.length > 0 ? items[items.length - 1] : '',
         checkout_status: checkoutStatus,
         weightMatch,
         weightDifference,
-        physicalWeight: Number(physicalWeight),
-        totalWeight: cart.totalWeight,
-        totalPrice: cart.totalPrice,
         status: 'checkout',
         timestamp: Date.now()
       };
@@ -562,33 +583,42 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
       } else if (rtdb) {
         await set(ref(rtdb, `kiosk_status/${cartId}`), statusPayload);
       }
-      
-      const { esp32Service } = require('../services/esp32Service');
-      await esp32Service.updateHeartbeat('Connected', -50, cartId, Number(physicalWeight));
-    } catch (e) {
-      console.error('Failed to sync esp32Status in batchCheckout:', e);
+
+      try {
+        const { esp32Service } = require('../services/esp32Service');
+        await esp32Service.updateHeartbeat('Connected', -50, cartId, pWeight);
+      } catch (e) {}
+    } catch (rtdbErr) {
+      console.error('⚠️ Failed to update RTDB in batchCheckout:', rtdbErr);
     }
 
+    // Explicit responses required by ESP32 C++ hardware
     if (!weightMatch) {
+      console.warn(`🚨 Batch checkout weight mismatch for ${cartId}: diff = ${weightDifference}g (Physical: ${pWeight}g, Expected: ${eWeight}g)`);
       return res.status(400).json({ 
         success: false, 
         message: "Weight mismatch",
         approved: false,
         checkout_status: "mismatch",
         weightDifference,
-        cart 
+        physicalWeight: pWeight,
+        expectedWeight: eWeight
       });
     }
 
+    console.log(`✅ Batch checkout approved for ${cartId}: Weight matched (Physical: ${pWeight}g, Expected: ${eWeight}g)`);
     return res.status(200).json({ 
       success: true, 
       message: "Checkout approved",
       approved: true,
       checkout_status: "approved",
       weightDifference,
-      cart 
+      physicalWeight: pWeight,
+      expectedWeight: eWeight
     });
+
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error in /api/cart/batch-checkout:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
