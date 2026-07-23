@@ -131,13 +131,9 @@ const getProductByUid = async (req, res) => {
         }
         return res.status(200).json({
             success: true,
-            product: {
-                uid,
-                name: itemTemplate.name,
-                price: itemTemplate.price,
-                weight: itemTemplate.weight
-            },
-            last_scanned_item: scanPayload
+            name: itemTemplate.name,
+            price: itemTemplate.price,
+            weight: itemTemplate.weight
         });
     }
     catch (error) {

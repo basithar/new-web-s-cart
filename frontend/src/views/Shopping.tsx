@@ -59,6 +59,14 @@ const Shopping: React.FC = () => {
 
   const { socket, triggerLocalNotification } = useSocket();
   const [checkoutStatus, setCheckoutStatus] = useState<string>('');
+  const [cartItems, setCartItems] = useState<any[]>([]);
+
+  // Sync cartItems from context initially
+  useEffect(() => {
+    if (cart && cart.items) {
+      setCartItems(cart.items);
+    }
+  }, [cart]);
 
   // 1. Firebase RTDB Listener for Real-Time Scanned Item from Hardware (GET /api/product/:uid or rfid scan)
   useEffect(() => {
@@ -71,6 +79,39 @@ const Shopping: React.FC = () => {
           setLastScanId(val.scanId);
           console.log('⚡ Real-time hardware item scan received via RTDB:', val);
           triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
+
+          // Actively push new item object into cartItems state array & recalculate UI immediately
+          setCartItems((prevItems) => {
+            const itemUid = val.uid || val.name;
+            const existingIndex = prevItems.findIndex(
+              (i: any) => (i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid)
+            );
+
+            if (existingIndex > -1) {
+              return prevItems.map((item: any, idx: number) => {
+                if (idx === existingIndex) {
+                  return { ...item, quantity: item.quantity + 1 };
+                }
+                return item;
+              });
+            } else {
+              const newItem = {
+                product: {
+                  _id: itemUid || `scanned_${Date.now()}`,
+                  uid: val.uid || itemUid,
+                  name: val.name || 'Scanned Item',
+                  price: Number(val.price) || 0,
+                  weight: Number(val.weight) || 0,
+                  stock: 100,
+                  category: 'General',
+                  imageUrl: ''
+                },
+                quantity: 1
+              };
+              return [...prevItems, newItem];
+            }
+          });
+
           fetchCart();
         }
       }
@@ -79,20 +120,20 @@ const Shopping: React.FC = () => {
     return () => unsubscribe();
   }, [lastScanId, fetchCart, triggerLocalNotification]);
 
-  // 2. Firebase RTDB Listener for Hardware-Triggered Checkout & Navigation
+  // 2. Firebase RTDB Listener for Hardware-Triggered Checkout & Navigation (STOP Button press)
   useEffect(() => {
     if (!rtdb) return;
-    const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
-    const unsubscribe = onValue(kioskStatusRef, (snapshot) => {
+    const checkoutStatusRef = ref(rtdb, 'kiosk_status/CART_001/checkout_status');
+    const unsubscribe = onValue(checkoutStatusRef, (snapshot) => {
       if (snapshot.exists()) {
-        const val = snapshot.val();
-        console.log('⚡ Hardware kiosk status update via RTDB:', val);
-
-        if (val.checkout_status === 'approved' || (val.status === 'checkout' && val.weightMatch === true)) {
-          console.log('✅ Hardware checkout approved! Immediately redirecting to /checkout portal...');
+        const status = snapshot.val();
+        console.log('⚡ Firebase checkout_status changed to:', status);
+        setCheckoutStatus(status);
+        if (status === 'approved') {
+          console.log('✅ Hardware checkout approved! Automatically redirecting to /checkout route...');
           setShowMismatchModal(false);
           navigate('/checkout');
-        } else if (val.checkout_status === 'mismatch' || (val.status === 'checkout' && val.weightMatch === false)) {
+        } else if (status === 'mismatch') {
           console.warn('🚨 Hardware checkout weight mismatch detected!');
           setShowMismatchModal(true);
         }
@@ -108,8 +149,6 @@ const Shopping: React.FC = () => {
         setCheckoutStatus('ready_for_payment');
       } else if (cart.status === 'weight_mismatch' || cart.weightMismatch) {
         setCheckoutStatus('weight_mismatch');
-      } else {
-        setCheckoutStatus('');
       }
     }
   }, [cart]);
@@ -205,12 +244,19 @@ const Shopping: React.FC = () => {
 
   const currentCart = cart as CartData;
 
-  const items = currentCart.items || [];
-  const total = currentCart.totalAmount || 0;
-  const budget = currentCart.budget || 0;
+  const items = cartItems.length > 0 ? cartItems : (currentCart?.items || []);
+  const total = items.reduce((sum: number, item: any) => {
+    const p = item.product || item;
+    return sum + (Number(p.price || 0) * Number(item.quantity || 1));
+  }, 0);
+  const expectedWeight = items.reduce((sum: number, item: any) => {
+    const p = item.product || item;
+    return sum + (Number(p.weight || 0) * Number(item.quantity || 1));
+  }, 0);
+  const budget = currentCart?.budget || 0;
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
-  const isStopped = currentCart.status === 'stopped' || currentCart.status === 'ready_for_payment' || currentCart.status === 'weight_mismatch';
+  const isStopped = currentCart?.status === 'stopped' || currentCart?.status === 'ready_for_payment' || currentCart?.status === 'weight_mismatch';
 
   const filteredCatalog = products.filter((p) =>
     p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
@@ -562,7 +608,7 @@ const Shopping: React.FC = () => {
             <div className="p-3 rounded-xl bg-slate-50/50 dark:bg-slate-900/20 border border-theme-border space-y-3 text-xs">
               <div className="flex justify-between font-semibold text-slate-400">
                 <span>Expected Weight:</span>
-                <span className="text-theme-text font-bold">{currentCart.expectedWeight || 0}g</span>
+                <span className="text-theme-text font-bold">{expectedWeight || currentCart?.expectedWeight || 0}g</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-400">
                 <span>Scale Telemetry:</span>
