@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { CheckCircle2, Home, Printer, Download, ArrowLeft } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 
@@ -14,8 +14,15 @@ interface ConfettiParticle {
 
 const Success: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { activeReceipt, clearActiveReceipt } = useCart();
   const [particles, setParticles] = useState<ConfettiParticle[]>([]);
+
+  // Extract dynamically passed state from Checkout.tsx
+  const stateData = location.state || {};
+  const passedCartItems = stateData.cartItems || [];
+  const passedTotalSpent = stateData.totalSpent || 0;
+  const passedExpectedWeight = stateData.expectedWeight || 0;
 
   // Generate Confetti Particles on Mount
   useEffect(() => {
@@ -36,19 +43,27 @@ const Success: React.FC = () => {
     navigate('/');
   };
 
-  // Generate fallback details if page accessed directly
-  const receipt = activeReceipt || {
-    transactionId: `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`,
-    orderNumber: `ORD-2026-${Math.floor(100 + Math.random() * 900)}`,
-    totalPaid: 950,
-    totalWeight: 1800,
+  // Format receipt items dynamically from passed cartItems
+  const dynamicItems = passedCartItems.length > 0
+    ? passedCartItems.map((i: any) => {
+        const prod = i.product || i;
+        return {
+          productName: prod.name || 'Scanned Item',
+          price: Number(prod.price || 0),
+          quantity: Number(i.quantity || 1)
+        };
+      })
+    : (activeReceipt?.items || []);
+
+  const receipt = {
+    transactionId: stateData.transactionId || activeReceipt?.transactionId || `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`,
+    orderNumber: stateData.orderNumber || activeReceipt?.orderNumber || `ORD-2026-${Math.floor(100 + Math.random() * 900)}`,
+    totalPaid: passedTotalSpent || activeReceipt?.totalPaid || dynamicItems.reduce((sum: number, i: any) => sum + (i.price * i.quantity), 0),
+    totalWeight: passedExpectedWeight || activeReceipt?.totalWeight || 0,
     createdAt: new Date().toISOString(),
-    customerName: 'Smart Customer',
-    paymentMethod: 'Credit Card',
-    items: [
-      { productName: 'Premium Milk', price: 450, quantity: 1 },
-      { productName: 'Fresh Bread', price: 250, quantity: 2 },
-    ],
+    customerName: stateData.customerName || activeReceipt?.customerName || 'Smart Customer',
+    paymentMethod: stateData.paymentMethod || activeReceipt?.paymentMethod || 'Credit Card',
+    items: dynamicItems.length > 0 ? dynamicItems : [{ productName: 'Scanned Supermarket Items', price: passedTotalSpent || 0, quantity: 1 }],
   };
 
   const handleDownloadReceipt = () => {

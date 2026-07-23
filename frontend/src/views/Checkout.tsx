@@ -201,8 +201,20 @@ const Checkout: React.FC = () => {
       });
 
       triggerLocalNotification('success', 'Payment Successful', 'Payment signal sent to ESP32 hardware!');
-      // Navigate to Success receipts view
-      navigate('/success');
+      // Navigate to Success receipts view passing cartItems, totalSpent, expectedWeight
+      navigate('/success', {
+        state: {
+          cartItems: items,
+          totalSpent: total,
+          expectedWeight: passedWeight || (cart?.expectedWeight || items.reduce((sum: number, i: any) => sum + (Number((i.product || i).weight || 0) * Number(i.quantity || 1)), 0)),
+          customerName,
+          phone,
+          email,
+          paymentMethod,
+          transactionId: customTxnId,
+          orderNumber: customOrderNo
+        }
+      });
     } catch (err: any) {
       setIsProcessing(false);
       triggerLocalNotification('error', 'Checkout Failed', err.message);

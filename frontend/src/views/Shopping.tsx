@@ -94,38 +94,34 @@ const Shopping: React.FC = () => {
           setLastScanId(val.scanId);
           console.log('⚡ Real-time hardware item scan received via RTDB:', val);
 
-          const isRemove = val.action === 'remove';
-          if (isRemove) {
+          if (val.action === 'remove') {
             triggerLocalNotification('info', 'Hardware Item Removed', `Removed: ${val.name}`);
-            setCartItems((prevItems) => {
+            setCartItems((prev) => {
               const itemUid = val.uid || val.name;
-              const existingIndex = prevItems.map((i: any) => i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid).lastIndexOf(true);
-
-              if (existingIndex > -1) {
-                const targetItem = prevItems[existingIndex];
-                if (targetItem.quantity > 1) {
-                  return prevItems.map((item: any, idx: number) => {
-                    if (idx === existingIndex) {
-                      return { ...item, quantity: item.quantity - 1 };
-                    }
-                    return item;
-                  });
+              // Find the index of the LAST occurrence of this item in the cart
+              const index = prev.map((item: any) => item.product?.uid || item.product?.name || item.uid || item.name).lastIndexOf(itemUid);
+              if (index > -1) {
+                const newCart = [...prev];
+                if (newCart[index].quantity > 1) {
+                  newCart[index] = { ...newCart[index], quantity: newCart[index].quantity - 1 };
                 } else {
-                  return prevItems.filter((_, idx: number) => idx !== existingIndex);
+                  newCart.splice(index, 1); // Remove strictly ONE instance
                 }
+                return newCart;
               }
-              return prevItems;
+              return prev; // If not found, do nothing
             });
           } else {
+            // Default add behavior
             triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
-            setCartItems((prevItems) => {
+            setCartItems((prev) => {
               const itemUid = val.uid || val.name;
-              const existingIndex = prevItems.findIndex(
-                (i: any) => (i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid)
+              const existingIndex = prev.findIndex(
+                (i: any) => (i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid || i.name === val.name)
               );
 
               if (existingIndex > -1) {
-                return prevItems.map((item: any, idx: number) => {
+                return prev.map((item: any, idx: number) => {
                   if (idx === existingIndex) {
                     return { ...item, quantity: item.quantity + 1 };
                   }
@@ -145,7 +141,7 @@ const Shopping: React.FC = () => {
                   },
                   quantity: 1
                 };
-                return [...prevItems, newItem];
+                return [...prev, newItem];
               }
             });
           }
