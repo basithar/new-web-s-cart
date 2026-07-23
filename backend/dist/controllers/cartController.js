@@ -506,10 +506,21 @@ const batchCheckoutCart = async (req, res) => {
         catch (e) {
             console.error('Failed to sync esp32Status in batchCheckout:', e);
         }
-        res.status(200).json({
+        if (!weightMatch) {
+            return res.status(400).json({
+                success: false,
+                message: "Weight mismatch",
+                approved: false,
+                checkout_status: "mismatch",
+                weightDifference,
+                cart
+            });
+        }
+        return res.status(200).json({
             success: true,
-            approved: weightMatch,
-            checkout_status: checkoutStatus,
+            message: "Checkout approved",
+            approved: true,
+            checkout_status: "approved",
             weightDifference,
             cart
         });

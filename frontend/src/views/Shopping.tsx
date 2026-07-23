@@ -123,13 +123,24 @@ const Shopping: React.FC = () => {
     return () => unsubscribe();
   }, [lastScanId, fetchCart, triggerLocalNotification]);
 
-  // 2. Firebase RTDB Listener for Telemetry (Physical Weight, Budget, Heartbeat & Checkout Status)
+  // 2. Firebase RTDB Listener for Telemetry (Physical Weight, Budget, Heartbeat, Reset & Checkout Status)
   useEffect(() => {
     if (!rtdb) return;
     const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
     const unsubscribe = onValue(kioskStatusRef, (snapshot) => {
       if (snapshot.exists()) {
         const val = snapshot.val();
+
+        // 1. Hardware-Triggered Cart Reset ('D' button on ESP32 cart)
+        if (val.status === 'reset') {
+          console.log('🧹 Hardware-triggered reset detected!');
+          setCartItems([]);
+          setLivePhysicalWeight(0);
+          setLiveBudget(0);
+          setShowMismatchModal(false);
+          setCheckoutStatus('');
+          return;
+        }
         
         // Live Physical Weight telemetry from heartbeat
         if (val.physicalWeight !== undefined && val.physicalWeight !== null) {

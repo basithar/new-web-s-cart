@@ -46,12 +46,62 @@ exports.postHeartbeat = postHeartbeat;
 const postHeartbeatLegacy = async (req, res) => {
     try {
         const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget } = req.body;
+        const nowIso = new Date().toISOString();
+        const nowTime = Date.now();
+        // 1. Check for Hardware-Triggered Reset ('D' button on ESP32 cart)
+        if (status === 'reset') {
+            console.log(`🧹 Hardware-triggered Reset received for ${deviceId}`);
+            const resetPayload = {
+                connected: true,
+                wifiStatus: 'Connected',
+                rssi: -50,
+                status: 'reset',
+                budget: 0,
+                physicalWeight: 0,
+                lastWeightReading: 0,
+                last_scanned_item: null,
+                lastRfidUid: '',
+                checkout_status: 'pending',
+                last_active: nowIso,
+                lastActive: nowIso,
+                timestamp: nowTime
+            };
+            if (firebase_1.adminRtdb) {
+                await firebase_1.adminRtdb.ref(`kiosk_status/${deviceId}`).set(resetPayload);
+            }
+            else if (firebase_1.rtdb) {
+                const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${deviceId}`);
+                await (0, database_1.set)(rtdbRef, resetPayload);
+            }
+            // Reset backend cart doc
+            try {
+                const { fetchCartDoc, saveCartDoc } = require('./cartController');
+                const cart = await fetchCartDoc(deviceId);
+                if (cart) {
+                    cart.items = [];
+                    cart.totalPrice = 0;
+                    cart.totalWeight = 0;
+                    cart.expectedWeight = 0;
+                    cart.physicalWeight = 0;
+                    cart.budget = 0;
+                    cart.remainingBudget = 0;
+                    cart.status = 'active';
+                    cart.weightMatch = true;
+                    cart.lastUpdated = nowIso;
+                    await saveCartDoc(deviceId, cart);
+                }
+            }
+            catch (e) { }
+            try {
+                (0, socketService_1.getIO)().emit('esp32_status', resetPayload);
+            }
+            catch (e) { }
+            return res.status(200).json({ message: "Cart reset successful", success: true, status: "reset" });
+        }
         const isOnline = status === 'online' || status === 'Connected';
         const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
         const budgetVal = budget !== undefined ? Number(budget) : undefined;
-        const nowIso = new Date().toISOString();
-        const nowTime = Date.now();
-        // 1. Update Firebase RTDB status under kiosk_status/CART_001
+        // 2. Update Firebase RTDB status under kiosk_status/CART_001
         const statusPayload = {
             connected: isOnline,
             wifiStatus: isOnline ? 'Connected' : 'Disconnected',
@@ -89,11 +139,11 @@ const postHeartbeatLegacy = async (req, res) => {
             }
         }
         catch (e) { }
-        // 2. Update Firestore esp32Status/status & weight telemetry
+        // 3. Update Firestore esp32Status/status & weight telemetry
         if (isOnline) {
             await esp32Service_1.esp32Service.updateHeartbeat('Connected', -50, deviceId, weightVal);
         }
-        // 3. Emit real-time updates via Socket.IO
+        // 4. Emit real-time updates via Socket.IO
         try {
             (0, socketService_1.getIO)().emit('esp32_status', statusPayload);
         }
