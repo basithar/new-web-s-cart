@@ -45,9 +45,10 @@ const postHeartbeat = async (req, res) => {
 exports.postHeartbeat = postHeartbeat;
 const postHeartbeatLegacy = async (req, res) => {
     try {
-        const { status = 'online', deviceId = 'CART_001', physicalWeight, weight } = req.body;
+        const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget } = req.body;
         const isOnline = status === 'online' || status === 'Connected';
         const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
+        const budgetVal = budget !== undefined ? Number(budget) : undefined;
         const nowIso = new Date().toISOString();
         const nowTime = Date.now();
         // 1. Update Firebase RTDB status under kiosk_status/CART_001
@@ -62,6 +63,9 @@ const postHeartbeatLegacy = async (req, res) => {
             currentShoppingSession: deviceId,
             timestamp: nowTime
         };
+        if (budgetVal !== undefined) {
+            statusPayload.budget = budgetVal;
+        }
         if (firebase_1.adminRtdb) {
             await firebase_1.adminRtdb.ref(`kiosk_status/${deviceId}`).update(statusPayload);
         }
@@ -69,6 +73,22 @@ const postHeartbeatLegacy = async (req, res) => {
             const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${deviceId}`);
             await (0, database_1.set)(rtdbRef, statusPayload);
         }
+        // Also update cart doc if present
+        try {
+            const { fetchCartDoc, saveCartDoc } = require('./cartController');
+            const cart = await fetchCartDoc(deviceId);
+            if (cart) {
+                cart.physicalWeight = weightVal;
+                if (budgetVal !== undefined) {
+                    cart.budget = budgetVal;
+                    cart.remainingBudget = cart.budget - (cart.totalPrice || 0);
+                }
+                cart.lastSeen = nowIso;
+                cart.lastUpdated = nowIso;
+                await saveCartDoc(deviceId, cart);
+            }
+        }
+        catch (e) { }
         // 2. Update Firestore esp32Status/status & weight telemetry
         if (isOnline) {
             await esp32Service_1.esp32Service.updateHeartbeat('Connected', -50, deviceId, weightVal);
@@ -80,7 +100,7 @@ const postHeartbeatLegacy = async (req, res) => {
         catch (e) {
             // socket not ready, ignore
         }
-        res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, last_active: nowIso });
+        res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, budget: budgetVal, last_active: nowIso });
     }
     catch (error) {
         console.error('❌ Error in /api/heartbeat:', error);

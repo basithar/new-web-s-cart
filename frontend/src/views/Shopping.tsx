@@ -61,16 +61,17 @@ const Shopping: React.FC = () => {
   const [checkoutStatus, setCheckoutStatus] = useState<string>('');
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [livePhysicalWeight, setLivePhysicalWeight] = useState<number | null>(null);
+  const [liveBudget, setLiveBudget] = useState<number | null>(null);
   const [liveLastActive, setLiveLastActive] = useState<string | null>(null);
 
-  // Sync cartItems from context initially
+  // Sync cartItems from context ONLY when cartItems is empty to prevent wiping scanned items
   useEffect(() => {
-    if (cart && cart.items) {
+    if (cart && cart.items && cart.items.length > 0 && cartItems.length === 0) {
       setCartItems(cart.items);
     }
-  }, [cart]);
+  }, [cart, cartItems.length]);
 
-  // 1. Firebase RTDB Listener for Real-Time Scanned Item from Hardware (GET /api/product/:uid or rfid scan)
+  // 1. Firebase RTDB Listener for Real-Time Scanned Item (Functional State Push Fix)
   useEffect(() => {
     if (!rtdb) return;
     const scannedItemRef = ref(rtdb, 'kiosk_status/CART_001/last_scanned_item');
@@ -82,7 +83,7 @@ const Shopping: React.FC = () => {
           console.log('⚡ Real-time hardware item scan received via RTDB:', val);
           triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
 
-          // Actively push new item object into cartItems state array & recalculate UI immediately
+          // FUNCTIONAL STATE UPDATE: Actively push new item object into cartItems array without state reset
           setCartItems((prevItems) => {
             const itemUid = val.uid || val.name;
             const existingIndex = prevItems.findIndex(
@@ -122,7 +123,7 @@ const Shopping: React.FC = () => {
     return () => unsubscribe();
   }, [lastScanId, fetchCart, triggerLocalNotification]);
 
-  // 2. Firebase RTDB Listener for Hardware Telemetry & Checkout Navigation (Heartbeat & Scale Reading)
+  // 2. Firebase RTDB Listener for Telemetry (Physical Weight, Budget, Heartbeat & Checkout Status)
   useEffect(() => {
     if (!rtdb) return;
     const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
@@ -130,20 +131,25 @@ const Shopping: React.FC = () => {
       if (snapshot.exists()) {
         const val = snapshot.val();
         
-        // Extract live physical weight from heartbeat updates
+        // Live Physical Weight telemetry from heartbeat
         if (val.physicalWeight !== undefined && val.physicalWeight !== null) {
           setLivePhysicalWeight(Number(val.physicalWeight));
         } else if (val.lastWeightReading !== undefined && val.lastWeightReading !== null) {
           setLivePhysicalWeight(Number(val.lastWeightReading));
         }
 
+        // Live Budget telemetry from heartbeat
+        if (val.budget !== undefined && val.budget !== null) {
+          setLiveBudget(Number(val.budget));
+        }
+
         if (val.last_active || val.lastActive) {
           setLiveLastActive(val.last_active || val.lastActive);
         }
 
-        // Checkout navigation
+        // Enforce Checkout Redirect when approved
         if (val.checkout_status === 'approved' || (val.status === 'checkout' && val.weightMatch === true)) {
-          console.log('✅ Hardware checkout approved! Automatically redirecting to /checkout route...');
+          console.log('✅ Hardware checkout approved! Immediately redirecting to /checkout route...');
           setShowMismatchModal(false);
           navigate('/checkout');
         } else if (val.checkout_status === 'mismatch' || (val.status === 'checkout' && val.weightMatch === false)) {
@@ -266,10 +272,13 @@ const Shopping: React.FC = () => {
     const p = item.product || item;
     return sum + (Number(p.weight || 0) * Number(item.quantity || 1));
   }, 0);
-  const budget = currentCart?.budget || 0;
+  const budget = liveBudget !== null ? liveBudget : (currentCart?.budget || 0);
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
   const isStopped = currentCart?.status === 'stopped' || currentCart?.status === 'ready_for_payment' || currentCart?.status === 'weight_mismatch';
+
+  // Fix 4: Security Alert check if livePhysicalWeight exceeds expectedWeight by > 50g
+  const isSecurityAlert = livePhysicalWeight !== null && expectedWeight > 0 && (livePhysicalWeight - expectedWeight) > 50;
 
   const filteredCatalog = products.filter((p) =>
     p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
@@ -278,9 +287,25 @@ const Shopping: React.FC = () => {
 
   return (
     <div className="space-y-6 text-theme-text transition-colors duration-300">
+
+      {/* Fix 4: Security Alert Banner if unscanned item is added after checkout or shopping */}
+      {isSecurityAlert && (
+        <div className="p-5 rounded-2xl bg-rose-500/15 border-2 border-rose-500 text-rose-500 font-extrabold text-sm flex items-center justify-between gap-3 shadow-xl animate-pulse">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-7 h-7 text-rose-500 shrink-0" />
+            <div>
+              <h4 className="font-extrabold uppercase tracking-wide text-xs">SECURITY ALERT ACTIVE</h4>
+              <p className="text-xs font-semibold mt-0.5">SECURITY ALERT: Unscanned item detected in the cart. Please remove it.</p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-rose-500 text-white text-[10px] uppercase font-bold tracking-widest shrink-0">
+            +{(livePhysicalWeight! - expectedWeight)}g Unscanned
+          </span>
+        </div>
+      )}
       
       {/* Weight is Matched Banner */}
-      {currentCart.weightMatch && (
+      {currentCart.weightMatch && !isSecurityAlert && (
         <div className="p-5 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-fade-in">
           <CheckCircle className="w-6 h-6 text-emerald-500 shrink-0 animate-bounce" />
           <span>Weight is Matched! ✅</span>
@@ -288,7 +313,7 @@ const Shopping: React.FC = () => {
       )}
       
       {/* Dynamic Weight Mismatch Warning Banner */}
-      {checkoutStatus === 'weight_mismatch' && (
+      {checkoutStatus === 'weight_mismatch' && !isSecurityAlert && (
         <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-extrabold text-sm flex items-center gap-3 shadow-md animate-pulse">
           <AlertTriangle className="w-6 h-6 text-rose-500 shrink-0" />
           <span>Weight Mismatch: There are unscanned items in your cart. Please scan them again!</span>
@@ -624,8 +649,8 @@ const Shopping: React.FC = () => {
                 <span className="text-theme-text font-bold">{expectedWeight || currentCart?.expectedWeight || 0}g</span>
               </div>
               <div className="flex justify-between font-semibold text-slate-400">
-                <span>Scale Telemetry:</span>
-                <span className={`font-bold ${currentCart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
+                <span>Live Physical Weight:</span>
+                <span className={`font-bold ${isSecurityAlert || currentCart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
                   {livePhysicalWeight !== null ? livePhysicalWeight : (currentCart?.physicalWeight || 0)}g
                 </span>
               </div>

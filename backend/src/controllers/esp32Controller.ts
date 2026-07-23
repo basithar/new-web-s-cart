@@ -51,15 +51,16 @@ export const postHeartbeat = async (req: Request, res: Response) => {
 
 export const postHeartbeatLegacy = async (req: Request, res: Response) => {
   try {
-    const { status = 'online', deviceId = 'CART_001', physicalWeight, weight } = req.body;
+    const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget } = req.body;
     const isOnline = status === 'online' || status === 'Connected';
     const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
+    const budgetVal = budget !== undefined ? Number(budget) : undefined;
 
     const nowIso = new Date().toISOString();
     const nowTime = Date.now();
 
     // 1. Update Firebase RTDB status under kiosk_status/CART_001
-    const statusPayload = {
+    const statusPayload: Record<string, any> = {
       connected: isOnline,
       wifiStatus: isOnline ? 'Connected' : 'Disconnected',
       rssi: isOnline ? -50 : -100,
@@ -71,12 +72,32 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
       timestamp: nowTime
     };
 
+    if (budgetVal !== undefined) {
+      statusPayload.budget = budgetVal;
+    }
+
     if (adminRtdb) {
       await adminRtdb.ref(`kiosk_status/${deviceId}`).update(statusPayload);
     } else {
       const rtdbRef = ref(rtdb, `kiosk_status/${deviceId}`);
       await set(rtdbRef, statusPayload);
     }
+
+    // Also update cart doc if present
+    try {
+      const { fetchCartDoc, saveCartDoc } = require('./cartController');
+      const cart = await fetchCartDoc(deviceId);
+      if (cart) {
+        cart.physicalWeight = weightVal;
+        if (budgetVal !== undefined) {
+          cart.budget = budgetVal;
+          cart.remainingBudget = cart.budget - (cart.totalPrice || 0);
+        }
+        cart.lastSeen = nowIso;
+        cart.lastUpdated = nowIso;
+        await saveCartDoc(deviceId, cart);
+      }
+    } catch (e) {}
 
     // 2. Update Firestore esp32Status/status & weight telemetry
     if (isOnline) {
@@ -90,7 +111,7 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
       // socket not ready, ignore
     }
 
-    res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, last_active: nowIso });
+    res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, budget: budgetVal, last_active: nowIso });
   } catch (error: any) {
     console.error('❌ Error in /api/heartbeat:', error);
     res.status(500).json({ error: error.message });
