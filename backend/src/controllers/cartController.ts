@@ -328,45 +328,48 @@ export const stopShoppingSession = async (req: Request, res: Response) => {
 // 5. POST /api/esp32/heartbeat
 export const postHeartbeat = async (req: Request, res: Response) => {
   try {
-    const { cartId = 'CART_001', weight = 0, budget = 3500 } = req.body;
+    const { cartId = 'CART_001', physicalWeight, weight = 0, budget = 3500, wifiStatus = 'Connected', rssi = -50 } = req.body;
+    const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : Number(weight);
+    const nowIso = new Date().toISOString();
 
     const cart = await fetchCartDoc(cartId);
-    cart.physicalWeight = Number(weight);
+    cart.physicalWeight = weightVal;
     cart.budget = Number(budget);
     cart.remainingBudget = cart.budget - cart.totalPrice;
-    cart.lastSeen = new Date().toISOString();
-    cart.lastUpdated = new Date().toISOString();
+    cart.lastSeen = nowIso;
+    cart.lastUpdated = nowIso;
 
     await saveCartDoc(cartId, cart);
 
     // Sync ESP32 connection state with Realtime Database and Firestore status doc
     try {
-      const { wifiStatus = 'Connected', rssi = -50 } = req.body;
       const statusPayload = {
         connected: true,
         wifiStatus,
         rssi,
-        lastActive: new Date().toISOString(),
+        last_active: nowIso,
+        lastActive: nowIso,
+        physicalWeight: weightVal,
+        lastWeightReading: weightVal,
         currentShoppingSession: cartId,
-        lastWeightReading: Number(weight)
+        timestamp: Date.now()
       };
       
       // Update RTDB under kiosk_status/CART_001
-      if (rtdb) {
-        await set(ref(rtdb, `kiosk_status/${cartId}`), {
-          ...statusPayload,
-          timestamp: Date.now()
-        });
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update(statusPayload);
+      } else if (rtdb) {
+        await set(ref(rtdb, `kiosk_status/${cartId}`), statusPayload);
       }
       
       // Update Firestore
       const { esp32Service } = require('../services/esp32Service');
-      await esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, Number(weight));
+      await esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, weightVal);
     } catch (e) {
       console.error('Failed to sync esp32Status in postHeartbeat:', e);
     }
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, physicalWeight: weightVal, last_active: nowIso });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

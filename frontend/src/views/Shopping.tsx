@@ -60,6 +60,8 @@ const Shopping: React.FC = () => {
   const { socket, triggerLocalNotification } = useSocket();
   const [checkoutStatus, setCheckoutStatus] = useState<string>('');
   const [cartItems, setCartItems] = useState<any[]>([]);
+  const [livePhysicalWeight, setLivePhysicalWeight] = useState<number | null>(null);
+  const [liveLastActive, setLiveLastActive] = useState<string | null>(null);
 
   // Sync cartItems from context initially
   useEffect(() => {
@@ -120,20 +122,31 @@ const Shopping: React.FC = () => {
     return () => unsubscribe();
   }, [lastScanId, fetchCart, triggerLocalNotification]);
 
-  // 2. Firebase RTDB Listener for Hardware-Triggered Checkout & Navigation (STOP Button press)
+  // 2. Firebase RTDB Listener for Hardware Telemetry & Checkout Navigation (Heartbeat & Scale Reading)
   useEffect(() => {
     if (!rtdb) return;
-    const checkoutStatusRef = ref(rtdb, 'kiosk_status/CART_001/checkout_status');
-    const unsubscribe = onValue(checkoutStatusRef, (snapshot) => {
+    const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
+    const unsubscribe = onValue(kioskStatusRef, (snapshot) => {
       if (snapshot.exists()) {
-        const status = snapshot.val();
-        console.log('⚡ Firebase checkout_status changed to:', status);
-        setCheckoutStatus(status);
-        if (status === 'approved') {
+        const val = snapshot.val();
+        
+        // Extract live physical weight from heartbeat updates
+        if (val.physicalWeight !== undefined && val.physicalWeight !== null) {
+          setLivePhysicalWeight(Number(val.physicalWeight));
+        } else if (val.lastWeightReading !== undefined && val.lastWeightReading !== null) {
+          setLivePhysicalWeight(Number(val.lastWeightReading));
+        }
+
+        if (val.last_active || val.lastActive) {
+          setLiveLastActive(val.last_active || val.lastActive);
+        }
+
+        // Checkout navigation
+        if (val.checkout_status === 'approved' || (val.status === 'checkout' && val.weightMatch === true)) {
           console.log('✅ Hardware checkout approved! Automatically redirecting to /checkout route...');
           setShowMismatchModal(false);
           navigate('/checkout');
-        } else if (status === 'mismatch') {
+        } else if (val.checkout_status === 'mismatch' || (val.status === 'checkout' && val.weightMatch === false)) {
           console.warn('🚨 Hardware checkout weight mismatch detected!');
           setShowMismatchModal(true);
         }
@@ -211,12 +224,12 @@ const Shopping: React.FC = () => {
     );
   }
 
-  // Heartbeat online check timestamp calculations
-  const lastActiveTimestamp = esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
+  // Heartbeat online check: active within the last 30 seconds as specified
+  const lastActiveTimestamp = liveLastActive || esp32Status?.last_active || esp32Status?.lastActive || cart?.lastSeen || (cart as any)?.lastActive;
   const isOnline = (() => {
     if (!lastActiveTimestamp) return false;
     const lastActiveTime = new Date(lastActiveTimestamp).getTime();
-    return (now - lastActiveTime) < 20000;
+    return (now - lastActiveTime) < 30000;
   })();
 
   // Welcome/Start Session layout when cart is null, pending, or completed
@@ -612,8 +625,8 @@ const Shopping: React.FC = () => {
               </div>
               <div className="flex justify-between font-semibold text-slate-400">
                 <span>Scale Telemetry:</span>
-                <span className={`font-bold ${currentCart.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
-                  {currentCart.physicalWeight || 0}g
+                <span className={`font-bold ${currentCart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
+                  {livePhysicalWeight !== null ? livePhysicalWeight : (currentCart?.physicalWeight || 0)}g
                 </span>
               </div>
               

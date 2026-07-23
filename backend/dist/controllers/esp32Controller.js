@@ -45,27 +45,33 @@ const postHeartbeat = async (req, res) => {
 exports.postHeartbeat = postHeartbeat;
 const postHeartbeatLegacy = async (req, res) => {
     try {
-        const { status, deviceId = 'CART_001' } = req.body;
-        const isOnline = status === 'online';
+        const { status = 'online', deviceId = 'CART_001', physicalWeight, weight } = req.body;
+        const isOnline = status === 'online' || status === 'Connected';
+        const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
+        const nowIso = new Date().toISOString();
+        const nowTime = Date.now();
         // 1. Update Firebase RTDB status under kiosk_status/CART_001
         const statusPayload = {
             connected: isOnline,
             wifiStatus: isOnline ? 'Connected' : 'Disconnected',
             rssi: isOnline ? -50 : -100,
-            lastActive: new Date().toISOString(),
+            last_active: nowIso,
+            lastActive: nowIso,
+            physicalWeight: weightVal,
+            lastWeightReading: weightVal,
             currentShoppingSession: deviceId,
-            timestamp: Date.now()
+            timestamp: nowTime
         };
         if (firebase_1.adminRtdb) {
-            await firebase_1.adminRtdb.ref(`kiosk_status/${deviceId}`).set(statusPayload);
+            await firebase_1.adminRtdb.ref(`kiosk_status/${deviceId}`).update(statusPayload);
         }
         else {
             const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${deviceId}`);
             await (0, database_1.set)(rtdbRef, statusPayload);
         }
-        // 2. Update Firestore esp32Status/status
+        // 2. Update Firestore esp32Status/status & weight telemetry
         if (isOnline) {
-            await esp32Service_1.esp32Service.updateHeartbeat('Connected', -50, deviceId);
+            await esp32Service_1.esp32Service.updateHeartbeat('Connected', -50, deviceId, weightVal);
         }
         // 3. Emit real-time updates via Socket.IO
         try {
@@ -74,10 +80,10 @@ const postHeartbeatLegacy = async (req, res) => {
         catch (e) {
             // socket not ready, ignore
         }
-        res.status(200).json({ message: "Heartbeat received successfully", success: true });
+        res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, last_active: nowIso });
     }
     catch (error) {
-        console.error('❌ Error in legacy /api/heartbeat:', error);
+        console.error('❌ Error in /api/heartbeat:', error);
         res.status(500).json({ error: error.message });
     }
 };
