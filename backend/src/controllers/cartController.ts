@@ -112,13 +112,16 @@ export const getProductByUid = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: `Product with UID ${uid} not found.` });
     }
 
+    const action = (req.query.action as string) || 'add';
+
     const scanPayload = {
       uid,
       name: itemTemplate.name,
       price: itemTemplate.price,
       weight: itemTemplate.weight,
+      action,
       timestamp: Date.now(),
-      scanId: `${uid}_${Date.now()}`
+      scanId: `${uid}_${action}_${Date.now()}`
     };
 
     // Simultaneously write this scan event to Firebase Realtime Database
@@ -143,14 +146,21 @@ export const getProductByUid = async (req: Request, res: Response) => {
     // Also update cart document
     try {
       const cart = await fetchCartDoc(cartId);
-      const existingIndex = cart.items.findIndex(item => item.uid === uid);
-      if (existingIndex < 0) {
-        cart.items.push({
-          uid,
-          name: itemTemplate.name,
-          price: itemTemplate.price,
-          weight: itemTemplate.weight
-        });
+      if (action === 'remove') {
+        const existingIndex = cart.items.findIndex(item => item.uid === uid || item.name.toLowerCase() === itemTemplate.name.toLowerCase());
+        if (existingIndex > -1) {
+          cart.items.splice(existingIndex, 1);
+        }
+      } else {
+        const existingIndex = cart.items.findIndex(item => item.uid === uid);
+        if (existingIndex < 0) {
+          cart.items.push({
+            uid,
+            name: itemTemplate.name,
+            price: itemTemplate.price,
+            weight: itemTemplate.weight
+          });
+        }
       }
       cart.totalPrice = cart.items.reduce((sum, i) => sum + i.price, 0);
       cart.totalWeight = cart.items.reduce((sum, i) => sum + i.weight, 0);
@@ -166,7 +176,8 @@ export const getProductByUid = async (req: Request, res: Response) => {
       success: true,
       name: itemTemplate.name,
       price: itemTemplate.price,
-      weight: itemTemplate.weight
+      weight: itemTemplate.weight,
+      action
     });
   } catch (error: any) {
     console.error('Error in getProductByUid:', error);
@@ -379,19 +390,49 @@ export const postHeartbeat = async (req: Request, res: Response) => {
 export const payCart = async (req: Request, res: Response) => {
   try {
     const { cartId = 'CART_001', paymentMethod = 'card' } = req.body;
+    const nowIso = new Date().toISOString();
 
-    const cart = await fetchCartDoc(cartId);
-    cart.status = 'paid';
-    cart.paidAt = new Date().toISOString();
-    cart.paymentMethod = paymentMethod;
-    cart.lastUpdated = new Date().toISOString();
+    try {
+      const cart = await fetchCartDoc(cartId);
+      if (cart) {
+        cart.status = 'paid';
+        cart.paidAt = nowIso;
+        cart.paymentMethod = paymentMethod;
+        cart.lastUpdated = nowIso;
+        await saveCartDoc(cartId, cart);
+        emitCartUpdate(cartId, cart);
+      }
+    } catch (cartErr) {
+      console.warn('⚠️ Could not fetch/save cart doc in payCart:', cartErr);
+    }
 
-    await saveCartDoc(cartId, cart);
-    emitCartUpdate(cartId, cart);
+    // Write payment_status: 'completed' to Firebase RTDB for ESP32 hardware
+    try {
+      const statusPayload = {
+        checkout_status: 'paid',
+        payment_status: 'completed',
+        paidAt: nowIso,
+        timestamp: Date.now()
+      };
 
-    res.status(200).json({ success: true, message: "Payment successful" });
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update(statusPayload);
+      } else if (rtdb) {
+        await set(ref(rtdb, `kiosk_status/${cartId}/payment_status`), 'completed');
+        await set(ref(rtdb, `kiosk_status/${cartId}/checkout_status`), 'paid');
+      }
+    } catch (rtdbErr) {
+      console.error('⚠️ Failed to update RTDB in payCart:', rtdbErr);
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: "Payment completed successfully",
+      payment_status: "completed"
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error in /api/cart/pay:', error);
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 

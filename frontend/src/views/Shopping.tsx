@@ -64,6 +64,18 @@ const Shopping: React.FC = () => {
   const [liveBudget, setLiveBudget] = useState<number | null>(null);
   const [liveLastActive, setLiveLastActive] = useState<string | null>(null);
 
+  // Derived real-time UI metrics
+  const items = cartItems.length > 0 ? cartItems : ((cart as any)?.items || []);
+  const total = items.reduce((sum: number, item: any) => {
+    const p = item.product || item;
+    return sum + (Number(p.price || 0) * Number(item.quantity || 1));
+  }, 0);
+  const expectedWeight = items.reduce((sum: number, item: any) => {
+    const p = item.product || item;
+    return sum + (Number(p.weight || 0) * Number(item.quantity || 1));
+  }, 0);
+  const budget = liveBudget !== null ? liveBudget : ((cart as any)?.budget || 0);
+
   // Sync cartItems from context ONLY when cartItems is empty to prevent wiping scanned items
   useEffect(() => {
     if (cart && cart.items && cart.items.length > 0 && cartItems.length === 0) {
@@ -71,7 +83,7 @@ const Shopping: React.FC = () => {
     }
   }, [cart, cartItems.length]);
 
-  // 1. Firebase RTDB Listener for Real-Time Scanned Item (Functional State Push Fix)
+  // 1. Firebase RTDB Listener for Real-Time Scanned Item ('add' vs 'remove' mode)
   useEffect(() => {
     if (!rtdb) return;
     const scannedItemRef = ref(rtdb, 'kiosk_status/CART_001/last_scanned_item');
@@ -81,39 +93,62 @@ const Shopping: React.FC = () => {
         if (val && val.scanId && val.scanId !== lastScanId) {
           setLastScanId(val.scanId);
           console.log('⚡ Real-time hardware item scan received via RTDB:', val);
-          triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
 
-          // FUNCTIONAL STATE UPDATE: Actively push new item object into cartItems array without state reset
-          setCartItems((prevItems) => {
-            const itemUid = val.uid || val.name;
-            const existingIndex = prevItems.findIndex(
-              (i: any) => (i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid)
-            );
+          const isRemove = val.action === 'remove';
+          if (isRemove) {
+            triggerLocalNotification('info', 'Hardware Item Removed', `Removed: ${val.name}`);
+            setCartItems((prevItems) => {
+              const itemUid = val.uid || val.name;
+              const existingIndex = prevItems.map((i: any) => i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid).lastIndexOf(true);
 
-            if (existingIndex > -1) {
-              return prevItems.map((item: any, idx: number) => {
-                if (idx === existingIndex) {
-                  return { ...item, quantity: item.quantity + 1 };
+              if (existingIndex > -1) {
+                const targetItem = prevItems[existingIndex];
+                if (targetItem.quantity > 1) {
+                  return prevItems.map((item: any, idx: number) => {
+                    if (idx === existingIndex) {
+                      return { ...item, quantity: item.quantity - 1 };
+                    }
+                    return item;
+                  });
+                } else {
+                  return prevItems.filter((_, idx: number) => idx !== existingIndex);
                 }
-                return item;
-              });
-            } else {
-              const newItem = {
-                product: {
-                  _id: itemUid || `scanned_${Date.now()}`,
-                  uid: val.uid || itemUid,
-                  name: val.name || 'Scanned Item',
-                  price: Number(val.price) || 0,
-                  weight: Number(val.weight) || 0,
-                  stock: 100,
-                  category: 'General',
-                  imageUrl: ''
-                },
-                quantity: 1
-              };
-              return [...prevItems, newItem];
-            }
-          });
+              }
+              return prevItems;
+            });
+          } else {
+            triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
+            setCartItems((prevItems) => {
+              const itemUid = val.uid || val.name;
+              const existingIndex = prevItems.findIndex(
+                (i: any) => (i.product?.uid === itemUid || i.product?.name === val.name || i.uid === itemUid)
+              );
+
+              if (existingIndex > -1) {
+                return prevItems.map((item: any, idx: number) => {
+                  if (idx === existingIndex) {
+                    return { ...item, quantity: item.quantity + 1 };
+                  }
+                  return item;
+                });
+              } else {
+                const newItem = {
+                  product: {
+                    _id: itemUid || `scanned_${Date.now()}`,
+                    uid: val.uid || itemUid,
+                    name: val.name || 'Scanned Item',
+                    price: Number(val.price) || 0,
+                    weight: Number(val.weight) || 0,
+                    stock: 100,
+                    category: 'General',
+                    imageUrl: ''
+                  },
+                  quantity: 1
+                };
+                return [...prevItems, newItem];
+              }
+            });
+          }
 
           fetchCart();
         }
@@ -158,11 +193,18 @@ const Shopping: React.FC = () => {
           setLiveLastActive(val.last_active || val.lastActive);
         }
 
-        // Enforce Checkout Redirect when approved
+        // Enforce Checkout Redirect when approved (passing cartItems state)
         if (val.checkout_status === 'approved' || (val.status === 'checkout' && val.weightMatch === true)) {
-          console.log('✅ Hardware checkout approved! Immediately redirecting to /checkout route...');
+          console.log('✅ Hardware checkout approved! Immediately redirecting to /checkout route with state...');
           setShowMismatchModal(false);
-          navigate('/checkout');
+          navigate('/checkout', { 
+            state: { 
+              cartItems, 
+              totalSpent: total, 
+              expectedWeight, 
+              budget 
+            } 
+          });
         } else if (val.checkout_status === 'mismatch' || (val.status === 'checkout' && val.weightMatch === false)) {
           console.warn('🚨 Hardware checkout weight mismatch detected!');
           setShowMismatchModal(true);
@@ -171,7 +213,7 @@ const Shopping: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [navigate]);
+  }, [navigate, cartItems, total, expectedWeight, budget]);
 
   useEffect(() => {
     if (cart) {
@@ -274,16 +316,6 @@ const Shopping: React.FC = () => {
 
   const currentCart = cart as CartData;
 
-  const items = cartItems.length > 0 ? cartItems : (currentCart?.items || []);
-  const total = items.reduce((sum: number, item: any) => {
-    const p = item.product || item;
-    return sum + (Number(p.price || 0) * Number(item.quantity || 1));
-  }, 0);
-  const expectedWeight = items.reduce((sum: number, item: any) => {
-    const p = item.product || item;
-    return sum + (Number(p.weight || 0) * Number(item.quantity || 1));
-  }, 0);
-  const budget = liveBudget !== null ? liveBudget : (currentCart?.budget || 0);
   const remaining = budget - total;
   const budgetPercent = budget > 0 ? Math.min(100, (total / budget) * 100) : 0;
   const isStopped = currentCart?.status === 'stopped' || currentCart?.status === 'ready_for_payment' || currentCart?.status === 'weight_mismatch';
@@ -504,10 +536,10 @@ const Shopping: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-theme-border/30">
-                        {items.map((item) => {
-                          const prod = item.product as any;
+                        {items.map((item: any, idx: number) => {
+                          const prod = item.product || item;
                           return (
-                            <tr key={prod._id} className="hover:bg-slate-100/20 dark:hover:bg-slate-900/10">
+                            <tr key={prod._id || prod.uid || idx} className="hover:bg-slate-100/20 dark:hover:bg-slate-900/10">
                               <td className="py-3 flex items-center gap-3.5">
                                 <img 
                                   src={prod.imageUrl || getProductImage(prod.category)} 

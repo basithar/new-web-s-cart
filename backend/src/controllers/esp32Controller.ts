@@ -156,17 +156,35 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
       await esp32Service.updateHeartbeat('Connected', -50, deviceId, weightVal);
     }
 
-    // 4. Emit real-time updates via Socket.IO
+    // 4. Read payment_status from RTDB for ESP32 hardware polling
+    let currentPaymentStatus = 'pending';
     try {
-      getIO().emit('esp32_status', statusPayload);
+      if (adminRtdb) {
+        const snap = await adminRtdb.ref(`kiosk_status/${deviceId}/payment_status`).get();
+        if (snap.exists() && snap.val()) {
+          currentPaymentStatus = snap.val();
+        }
+      }
+    } catch (e) {}
+
+    // 5. Emit real-time updates via Socket.IO
+    try {
+      getIO().emit('esp32_status', { ...statusPayload, payment_status: currentPaymentStatus });
     } catch (e) {
       // socket not ready, ignore
     }
 
-    res.status(200).json({ message: "Heartbeat received successfully", success: true, physicalWeight: weightVal, budget: budgetVal, last_active: nowIso });
+    return res.status(200).json({ 
+      message: "Heartbeat received successfully", 
+      success: true, 
+      payment_status: currentPaymentStatus, 
+      physicalWeight: weightVal, 
+      budget: budgetVal, 
+      last_active: nowIso 
+    });
   } catch (error: any) {
     console.error('❌ Error in /api/heartbeat:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   User, Mail, Phone, ShoppingBag, CreditCard, 
   Wallet, ShieldCheck, ArrowLeft, DollarSign,
@@ -7,11 +7,21 @@ import {
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
+import { API_URL } from '../config';
+import axios from 'axios';
 
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { cart, processCheckout } = useCart();
   const { triggerLocalNotification } = useSocket();
+
+  // Extract cart data passed via route state from Shopping.tsx
+  const stateCartData = location.state || {};
+  const passedCartItems = stateCartData.cartItems || [];
+  const passedTotal = stateCartData.totalSpent || 0;
+  const passedWeight = stateCartData.expectedWeight || 0;
+  const passedBudget = stateCartData.budget || 0;
 
   // Customer Form State
   const [customerName, setCustomerName] = useState('');
@@ -156,7 +166,7 @@ const Checkout: React.FC = () => {
         } else if (next < 75) {
           setPaymentStep('Verifying Card Security Credentials...');
         } else {
-          setPaymentStep('Payment Approved! Finalizing Order...');
+          setPaymentStep('Payment Approved! Finalizing Order & Notifying Hardware...');
         }
 
         return next;
@@ -168,6 +178,17 @@ const Checkout: React.FC = () => {
 
   const completeCheckout = async () => {
     try {
+      // Send Payment Completed signal to backend & ESP32 hardware
+      try {
+        await axios.post(`${API_URL}/cart/pay`, {
+          cartId: 'CART_001',
+          paymentMethod
+        });
+        console.log('✅ Sent payment completed signal to /api/cart/pay');
+      } catch (payErr) {
+        console.warn('⚠️ Could not post to /api/cart/pay:', payErr);
+      }
+
       // Mock generated IDs to look highly professional
       const customTxnId = `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`;
       const customOrderNo = `ORD-2026-${Math.floor(100 + Math.random() * 900)}`;
@@ -179,6 +200,7 @@ const Checkout: React.FC = () => {
         paymentStatus: 'Success'
       });
 
+      triggerLocalNotification('success', 'Payment Successful', 'Payment signal sent to ESP32 hardware!');
       // Navigate to Success receipts view
       navigate('/success');
     } catch (err: any) {
@@ -187,9 +209,10 @@ const Checkout: React.FC = () => {
     }
   };
 
-  const items = cart?.items || [];
-  const total = cart?.totalAmount || 0;
-  const budget = cart?.budget || 0;
+  // Combine items from passed route state or cart context
+  const items = passedCartItems.length > 0 ? passedCartItems : (cart?.items || []);
+  const total = passedTotal > 0 ? passedTotal : (cart?.totalAmount || items.reduce((sum: number, i: any) => sum + (Number((i.product || i).price || 0) * Number(i.quantity || 1)), 0));
+  const budget = passedBudget > 0 ? passedBudget : (cart?.budget || 0);
   const remaining = budget - total;
 
   if (items.length === 0) {
@@ -542,13 +565,13 @@ const Checkout: React.FC = () => {
 
             {/* Cart items list */}
             <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-              {items.map((item) => {
-                const prod = item.product as any;
+              {items.map((item: any, idx: number) => {
+                const prod = item.product || item;
                 return (
-                  <div key={prod._id} className="flex justify-between items-center text-xs">
+                  <div key={prod._id || prod.uid || idx} className="flex justify-between items-center text-xs">
                     <div>
-                      <p className="font-bold text-theme-text truncate max-w-[140px]">{prod.name}</p>
-                      <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Qty: {item.quantity}</p>
+                      <p className="font-bold text-theme-text truncate max-w-[140px]">{prod.name || 'Scanned Item'}</p>
+                      <p className="text-[10px] text-slate-450 mt-0.5 font-medium">Qty: {item.quantity || 1}</p>
                     </div>
                     <span className="font-extrabold text-slate-550 dark:text-slate-350">
                       Rs. {(prod.price * item.quantity).toLocaleString()}
@@ -574,7 +597,9 @@ const Checkout: React.FC = () => {
 
               <div className="flex justify-between border-t border-theme-border pt-2">
                 <span>Expected Weight:</span>
-                <span className="font-extrabold text-theme-text">{cart?.expectedWeight || 0}g</span>
+                <span className="text-theme-text font-bold">
+                  {passedWeight || cart?.expectedWeight || items.reduce((sum: number, i: any) => sum + (Number((i.product || i).weight || 0) * Number(i.quantity || 1)), 0)}g
+                </span>
               </div>
 
               <div className="flex justify-between">
