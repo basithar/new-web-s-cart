@@ -8,12 +8,37 @@ const dbService_1 = require("../services/dbService");
 const socketService_1 = require("../services/socketService");
 const postHeartbeat = async (req, res) => {
     try {
-        const { wifiStatus = 'Connected', rssi = -60, cartId, weight } = req.body;
-        // Register heartbeat
+        const { wifiStatus = 'Connected', rssi = -60, cartId = 'CART_001', weight } = req.body;
+        // Register heartbeat in Firestore
         await esp32Service_1.esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, weight !== undefined ? Number(weight) : undefined);
-        res.status(200).json({ success: true, message: 'Heartbeat registered.' });
+        // Sync RTDB connection status under kiosk_status/CART_001
+        const statusPayload = {
+            connected: true,
+            wifiStatus,
+            rssi: Number(rssi),
+            lastActive: new Date().toISOString(),
+            currentShoppingSession: cartId,
+            lastWeightReading: weight !== undefined ? Number(weight) : undefined,
+            timestamp: Date.now()
+        };
+        if (firebase_1.adminRtdb) {
+            await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}`).set(statusPayload);
+        }
+        else {
+            const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}`);
+            await (0, database_1.set)(rtdbRef, statusPayload);
+        }
+        // Emit Socket.IO status event
+        try {
+            (0, socketService_1.getIO)().emit('esp32_status', statusPayload);
+        }
+        catch (e) {
+            // ignore if socket service is not loaded
+        }
+        res.status(200).json({ message: "Heartbeat received successfully", success: true });
     }
     catch (error) {
+        console.error('❌ Error in /api/esp32/heartbeat:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -22,16 +47,22 @@ const postHeartbeatLegacy = async (req, res) => {
     try {
         const { status, deviceId = 'CART_001' } = req.body;
         const isOnline = status === 'online';
-        // 1. Update Firebase RTDB status
-        const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, 'esp32Status');
+        // 1. Update Firebase RTDB status under kiosk_status/CART_001
         const statusPayload = {
             connected: isOnline,
             wifiStatus: isOnline ? 'Connected' : 'Disconnected',
             rssi: isOnline ? -50 : -100,
             lastActive: new Date().toISOString(),
             currentShoppingSession: deviceId,
+            timestamp: Date.now()
         };
-        await (0, database_1.set)(rtdbRef, statusPayload);
+        if (firebase_1.adminRtdb) {
+            await firebase_1.adminRtdb.ref(`kiosk_status/${deviceId}`).set(statusPayload);
+        }
+        else {
+            const rtdbRef = (0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${deviceId}`);
+            await (0, database_1.set)(rtdbRef, statusPayload);
+        }
         // 2. Update Firestore esp32Status/status
         if (isOnline) {
             await esp32Service_1.esp32Service.updateHeartbeat('Connected', -50, deviceId);
@@ -43,9 +74,10 @@ const postHeartbeatLegacy = async (req, res) => {
         catch (e) {
             // socket not ready, ignore
         }
-        res.status(200).json({ success: true, message: 'Legacy Heartbeat registered.' });
+        res.status(200).json({ message: "Heartbeat received successfully", success: true });
     }
     catch (error) {
+        console.error('❌ Error in legacy /api/heartbeat:', error);
         res.status(500).json({ error: error.message });
     }
 };

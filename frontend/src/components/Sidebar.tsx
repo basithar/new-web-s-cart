@@ -40,92 +40,110 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, setCollapsed }) => {
   const navItems = user.role === 'admin' ? adminItems : customerItems;
 
   return (
-    <aside className={`glass-panel border-r border-theme-border flex flex-col justify-between h-screen fixed left-0 top-0 z-30 transition-all duration-300 ${
-      collapsed ? 'w-20' : 'w-64'
-    }`}>
-      <div className="flex flex-col">
-        {/* Logo Header */}
-        <div className="p-5 border-b border-theme-border flex items-center justify-between">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-              <ShoppingCart className="w-5 h-5 text-white" />
-            </div>
-            {!collapsed && (
-              <div>
-                <h1 className="font-extrabold text-sm text-theme-text leading-none tracking-tight">
-                  {user.role === 'admin' ? 'Smart Cart' : 'Mr.B Smart Shopping Cart'}
-                </h1>
-                <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider block mt-0.5">
-                  {user.role === 'admin' ? 'Store Console' : 'Kiosk Assistant'}
-                </span>
+    <>
+      {/* Mobile Backdrop Overlay when sidebar is open on mobile */}
+      {!collapsed && (
+        <div 
+          onClick={() => setCollapsed(true)} 
+          className="md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-25 transition-opacity"
+        />
+      )}
+
+      <aside className={`glass-panel border-r border-theme-border flex flex-col justify-between h-screen fixed left-0 top-0 z-30 transition-all duration-300 ${
+        collapsed 
+          ? '-translate-x-full md:translate-x-0 md:w-20' 
+          : 'translate-x-0 w-64 shadow-2xl md:shadow-none'
+      }`}>
+        <div className="flex flex-col">
+          {/* Logo Header */}
+          <div className="p-4 sm:p-5 border-b border-theme-border flex items-center justify-between">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                <ShoppingCart className="w-5 h-5 text-white" />
               </div>
-            )}
+              {(!collapsed || window.innerWidth < 768) && (
+                <div>
+                  <h1 className="font-extrabold text-xs sm:text-sm text-theme-text leading-none tracking-tight">
+                    {user.role === 'admin' ? 'Mr.B Smart Cart' : 'Mr.B Smart Shopping Cart'}
+                  </h1>
+                  <span className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider block mt-0.5">
+                    {user.role === 'admin' ? 'Store Console' : 'Kiosk Assistant'}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={() => setCollapsed(!collapsed)}
+              className="p-1.5 rounded-lg bg-theme-bg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              title={collapsed ? "Expand Menu" : "Collapse Menu"}
+            >
+              {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
           </div>
-          
-          <button 
-            onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-lg bg-theme-bg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+
+          {/* User Card */}
+          {!collapsed && (
+            <div className="p-4 mx-4 mt-4 rounded-2xl bg-theme-bg border border-theme-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-white shadow-md">
+                  {user.role === 'customer' ? 'S' : user.name.charAt(0)}
+                </div>
+                <div className="overflow-hidden">
+                  <h4 className="font-bold text-xs text-theme-text truncate">
+                    {user.role === 'customer' ? 'Mr.B Smart Customer' : user.name}
+                  </h4>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate capitalize">
+                    {user.role === 'customer' ? 'Customer Account' : `${user.role} Account`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Nav Links */}
+          <nav className="mt-4 sm:mt-6 px-3 sm:px-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-220px)]">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isDashboard = item.path === '/admin';
+              const targetPath = item.path;
+              
+              return (
+                <NavLink
+                  key={item.path}
+                  to={targetPath}
+                  end={isDashboard}
+                  onClick={() => {
+                    if (window.innerWidth < 768) {
+                      setCollapsed(true);
+                    }
+                  }}
+                  className={({ isActive }) => `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/15'
+                      : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                  {!collapsed && <span>{item.name}</span>}
+                </NavLink>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* User Card */}
-        {!collapsed && (
-          <div className="p-4 mx-4 mt-5 rounded-2xl bg-theme-bg border border-theme-border">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-500 flex items-center justify-center font-bold text-white shadow-md">
-                {user.role === 'customer' ? 'S' : user.name.charAt(0)}
-              </div>
-              <div className="overflow-hidden">
-                <h4 className="font-bold text-xs text-theme-text truncate">
-                  {user.role === 'customer' ? 'Mr.B Smart Customer' : user.name}
-                </h4>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate capitalize">
-                  {user.role === 'customer' ? 'Customer Account' : `${user.role} Account`}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Nav Links */}
-        <nav className="mt-6 px-4 space-y-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isDashboard = item.path === '/admin';
-            const targetPath = item.path;
-            
-            return (
-              <NavLink
-                key={item.path}
-                to={targetPath}
-                end={isDashboard}
-                className={({ isActive }) => `flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold tracking-wide transition-all duration-200 ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/15'
-                    : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40'
-                }`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                {!collapsed && <span>{item.name}</span>}
-              </NavLink>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Logout */}
-      <div className="p-4">
-        <button
-          onClick={logout}
-          className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors"
-        >
-          <LogOut className="w-5 h-5 shrink-0" />
-          {!collapsed && <span>Sign Out</span>}
-        </button>
-      </div>
-    </aside>
+        {/* Logout */}
+        <div className="p-4">
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors"
+          >
+            <LogOut className="w-5 h-5 shrink-0" />
+            {!collapsed && <span>Sign Out</span>}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 };
 

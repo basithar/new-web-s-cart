@@ -78,6 +78,7 @@ interface CartContextType {
   resumeShopping: () => Promise<void>;
   fetchScanHistory: () => Promise<void>;
   fetchEsp32Status: () => Promise<void>;
+  fetchCart: () => Promise<void>;
   clearActiveReceipt: () => void;
 }
 
@@ -402,6 +403,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resumeShopping,
         fetchScanHistory,
         fetchEsp32Status,
+        fetchCart: () => fetchCartDetails(cartId),
         clearActiveReceipt,
       }}
     >

@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.payCart = exports.postHeartbeat = exports.stopShoppingSession = exports.removeItemFromCart = exports.scanRfidCard = exports.getCart = exports.itemsDB = void 0;
+exports.batchCheckoutCart = exports.resumeCartSession = exports.updateCartItemQuantity = exports.updateCartBudget = exports.startCart = exports.payCart = exports.postHeartbeat = exports.stopShoppingSession = exports.removeItemFromCart = exports.scanRfidCard = exports.getProductByUid = exports.getCart = exports.itemsDB = void 0;
 const firebase_1 = require("../config/firebase");
+const database_1 = require("firebase/database");
+const socketService_1 = require("../services/socketService");
 // Hardcoded Items Database
 exports.itemsDB = {
     "F1CD0C01": { name: "Keeri Samba", price: 1300, weight: 5000 },
@@ -65,6 +67,85 @@ const getCart = async (req, res) => {
     }
 };
 exports.getCart = getCart;
+// GET /api/product/:uid
+const getProductByUid = async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const cartId = 'CART_001';
+        if (!uid) {
+            return res.status(400).json({ success: false, error: 'Missing product UID parameter.' });
+        }
+        const itemTemplate = exports.itemsDB[uid] || Object.values(exports.itemsDB).find(i => i.name.toLowerCase() === uid.toLowerCase());
+        if (!itemTemplate) {
+            return res.status(404).json({ success: false, error: `Product with UID ${uid} not found.` });
+        }
+        const scanPayload = {
+            uid,
+            name: itemTemplate.name,
+            price: itemTemplate.price,
+            weight: itemTemplate.weight,
+            timestamp: Date.now(),
+            scanId: `${uid}_${Date.now()}`
+        };
+        // Simultaneously write this scan event to Firebase Realtime Database
+        try {
+            if (firebase_1.adminRtdb) {
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}/last_scanned_item`).set(scanPayload);
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}`).update({
+                    lastRfidUid: uid,
+                    lastScanTime: new Date().toLocaleTimeString(),
+                    lastActive: new Date().toISOString(),
+                    connected: true,
+                    timestamp: Date.now()
+                });
+            }
+            else if (firebase_1.rtdb) {
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/last_scanned_item`), scanPayload);
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
+            }
+        }
+        catch (rtdbErr) {
+            console.error('Error writing last_scanned_item to RTDB:', rtdbErr);
+        }
+        // Also update cart document
+        try {
+            const cart = await fetchCartDoc(cartId);
+            const existingIndex = cart.items.findIndex(item => item.uid === uid);
+            if (existingIndex < 0) {
+                cart.items.push({
+                    uid,
+                    name: itemTemplate.name,
+                    price: itemTemplate.price,
+                    weight: itemTemplate.weight
+                });
+            }
+            cart.totalPrice = cart.items.reduce((sum, i) => sum + i.price, 0);
+            cart.totalWeight = cart.items.reduce((sum, i) => sum + i.weight, 0);
+            cart.remainingBudget = cart.budget - cart.totalPrice;
+            cart.lastUpdated = new Date().toISOString();
+            await (0, firebase_1.saveCartDoc)(cartId, cart);
+            (0, socketService_1.emitCartUpdate)(cartId, cart);
+        }
+        catch (cartErr) {
+            console.error('Error updating cart doc on product fetch:', cartErr);
+        }
+        return res.status(200).json({
+            success: true,
+            product: {
+                uid,
+                name: itemTemplate.name,
+                price: itemTemplate.price,
+                weight: itemTemplate.weight
+            },
+            last_scanned_item: scanPayload
+        });
+    }
+    catch (error) {
+        console.error('Error in getProductByUid:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.getProductByUid = getProductByUid;
 // 2. POST /api/rfid/scan
 const scanRfidCard = async (req, res) => {
     try {
@@ -76,33 +157,49 @@ const scanRfidCard = async (req, res) => {
         if (!itemTemplate) {
             return res.status(404).json({ success: false, error: 'Item not found in database' });
         }
-        const cart = await fetchCartDoc(cartId);
-        // Add item to items array
-        cart.items.push({
+        const scanPayload = {
             uid,
             name: itemTemplate.name,
             price: itemTemplate.price,
-            weight: itemTemplate.weight
-        });
-        // Recompute aggregates
-        cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
-        cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
-        cart.remainingBudget = cart.budget - cart.totalPrice;
-        cart.status = 'shopping';
-        cart.physicalWeight = Number(weight);
-        cart.lastUpdated = new Date().toISOString();
-        await (0, firebase_1.saveCartDoc)(cartId, cart);
+            weight: itemTemplate.weight,
+            timestamp: Date.now(),
+            scanId: `${uid}_${Date.now()}`
+        };
+        try {
+            const { esp32Service } = require('../services/esp32Service');
+            await esp32Service.registerScan(uid);
+            // Update telemetry reading & last_scanned_item on kiosk_status/CART_001
+            if (firebase_1.adminRtdb) {
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}/last_scanned_item`).set(scanPayload);
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}`).update({
+                    lastRfidUid: uid,
+                    lastScanTime: new Date().toLocaleTimeString(),
+                    lastWeightReading: Number(weight),
+                    lastActive: new Date().toISOString(),
+                    connected: true,
+                    timestamp: Date.now()
+                });
+            }
+            else if (firebase_1.rtdb) {
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/last_scanned_item`), scanPayload);
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastScanTime`), new Date().toLocaleTimeString());
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastActive`), new Date().toISOString());
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/connected`), true);
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/timestamp`), Date.now());
+            }
+        }
+        catch (e) {
+            console.error('Failed to register scan logs:', e);
+        }
         res.status(200).json({
             success: true,
+            message: 'Item registered in log (Batch mode active - cart unmodified)',
             item: {
                 name: itemTemplate.name,
                 price: itemTemplate.price,
                 weight: itemTemplate.weight
-            },
-            cart: {
-                totalPrice: cart.totalPrice,
-                totalWeight: cart.totalWeight,
-                remainingBudget: cart.remainingBudget
             }
         });
     }
@@ -118,25 +215,29 @@ const removeItemFromCart = async (req, res) => {
         if (!uid) {
             return res.status(400).json({ success: false, error: 'Missing RFID UID parameter.' });
         }
-        const cart = await fetchCartDoc(cartId);
-        // Find index of item in cart array
-        const itemIndex = cart.items.findIndex(item => item.uid === uid);
-        if (itemIndex > -1) {
-            cart.items.splice(itemIndex, 1);
+        // Update telemetry reading on kiosk_status/CART_001
+        try {
+            if (firebase_1.adminRtdb) {
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}`).update({
+                    lastWeightReading: Number(weight),
+                    lastActive: new Date().toISOString(),
+                    connected: true,
+                    timestamp: Date.now()
+                });
+            }
+            else if (firebase_1.rtdb) {
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/lastActive`), new Date().toISOString());
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/connected`), true);
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}/timestamp`), Date.now());
+            }
         }
-        // Recompute aggregates
-        cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
-        cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
-        cart.remainingBudget = cart.budget - cart.totalPrice;
-        cart.physicalWeight = Number(weight);
-        cart.lastUpdated = new Date().toISOString();
-        await (0, firebase_1.saveCartDoc)(cartId, cart);
+        catch (e) {
+            console.error('Failed to sync esp32Status in remove:', e);
+        }
         res.status(200).json({
             success: true,
-            cart: {
-                totalPrice: cart.totalPrice,
-                totalWeight: cart.totalWeight
-            }
+            message: 'Remove registered (Batch mode active - cart unmodified)'
         });
     }
     catch (error) {
@@ -161,6 +262,7 @@ const stopShoppingSession = async (req, res) => {
             cart.physicalWeight = Number(physicalWeight);
             cart.lastUpdated = new Date().toISOString();
             await (0, firebase_1.saveCartDoc)(cartId, cart);
+            (0, socketService_1.emitCartUpdate)(cartId, cart);
             return res.status(200).json({
                 weightMatch: true,
                 totalPrice: cart.totalPrice,
@@ -173,6 +275,7 @@ const stopShoppingSession = async (req, res) => {
             cart.physicalWeight = Number(physicalWeight);
             cart.lastUpdated = new Date().toISOString();
             await (0, firebase_1.saveCartDoc)(cartId, cart);
+            (0, socketService_1.emitCartUpdate)(cartId, cart);
             return res.status(200).json({
                 weightMatch: false,
                 difference: weightDifference,
@@ -196,6 +299,31 @@ const postHeartbeat = async (req, res) => {
         cart.lastSeen = new Date().toISOString();
         cart.lastUpdated = new Date().toISOString();
         await (0, firebase_1.saveCartDoc)(cartId, cart);
+        // Sync ESP32 connection state with Realtime Database and Firestore status doc
+        try {
+            const { wifiStatus = 'Connected', rssi = -50 } = req.body;
+            const statusPayload = {
+                connected: true,
+                wifiStatus,
+                rssi,
+                lastActive: new Date().toISOString(),
+                currentShoppingSession: cartId,
+                lastWeightReading: Number(weight)
+            };
+            // Update RTDB under kiosk_status/CART_001
+            if (firebase_1.rtdb) {
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}`), {
+                    ...statusPayload,
+                    timestamp: Date.now()
+                });
+            }
+            // Update Firestore
+            const { esp32Service } = require('../services/esp32Service');
+            await esp32Service.updateHeartbeat(wifiStatus, Number(rssi), cartId, Number(weight));
+        }
+        catch (e) {
+            console.error('Failed to sync esp32Status in postHeartbeat:', e);
+        }
         res.status(200).json({ success: true });
     }
     catch (error) {
@@ -213,6 +341,7 @@ const payCart = async (req, res) => {
         cart.paymentMethod = paymentMethod;
         cart.lastUpdated = new Date().toISOString();
         await (0, firebase_1.saveCartDoc)(cartId, cart);
+        (0, socketService_1.emitCartUpdate)(cartId, cart);
         res.status(200).json({ success: true, message: "Payment successful" });
     }
     catch (error) {
@@ -220,3 +349,173 @@ const payCart = async (req, res) => {
     }
 };
 exports.payCart = payCart;
+// 7. POST /api/cart/start
+const startCart = async (req, res) => {
+    try {
+        const { cartId = 'CART_001' } = req.body;
+        const defaultCart = {
+            cartId,
+            status: 'shopping',
+            budget: 3500,
+            remainingBudget: 3500,
+            totalPrice: 0,
+            totalWeight: 0,
+            physicalWeight: 0,
+            weightMatch: false,
+            items: [],
+            lastUpdated: new Date().toISOString(),
+            lastSeen: new Date().toISOString()
+        };
+        await (0, firebase_1.saveCartDoc)(cartId, defaultCart);
+        (0, socketService_1.emitCartUpdate)(cartId, defaultCart);
+        res.status(200).json({ success: true, cart: defaultCart });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.startCart = startCart;
+// 8. POST /api/cart/budget
+const updateCartBudget = async (req, res) => {
+    try {
+        const { cartId = 'CART_001', budget } = req.body;
+        const cart = await fetchCartDoc(cartId);
+        cart.budget = Number(budget);
+        cart.remainingBudget = cart.budget - cart.totalPrice;
+        cart.lastUpdated = new Date().toISOString();
+        await (0, firebase_1.saveCartDoc)(cartId, cart);
+        (0, socketService_1.emitCartUpdate)(cartId, cart);
+        res.status(200).json({ success: true, cart });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.updateCartBudget = updateCartBudget;
+// 9. POST /api/cart/quantity
+const updateCartItemQuantity = async (req, res) => {
+    try {
+        const { cartId = 'CART_001', productId, quantity } = req.body;
+        const cart = await fetchCartDoc(cartId);
+        const itemTemplate = exports.itemsDB[productId] || Object.values(exports.itemsDB).find(i => i.name === productId);
+        const uid = productId;
+        // Remove all existing instances of this item
+        cart.items = (cart.items || []).filter((item) => item.uid !== uid);
+        if (quantity > 0 && itemTemplate) {
+            for (let i = 0; i < quantity; i++) {
+                cart.items.push({
+                    uid,
+                    name: itemTemplate.name,
+                    price: itemTemplate.price,
+                    weight: itemTemplate.weight
+                });
+            }
+        }
+        cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
+        cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
+        cart.remainingBudget = cart.budget - cart.totalPrice;
+        cart.lastUpdated = new Date().toISOString();
+        await (0, firebase_1.saveCartDoc)(cartId, cart);
+        (0, socketService_1.emitCartUpdate)(cartId, cart);
+        res.status(200).json({ success: true, cart });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.updateCartItemQuantity = updateCartItemQuantity;
+// 10. POST /api/cart/resume
+const resumeCartSession = async (req, res) => {
+    try {
+        const { cartId = 'CART_001' } = req.body;
+        const cart = await fetchCartDoc(cartId);
+        cart.status = 'shopping';
+        cart.lastUpdated = new Date().toISOString();
+        await (0, firebase_1.saveCartDoc)(cartId, cart);
+        (0, socketService_1.emitCartUpdate)(cartId, cart);
+        res.status(200).json({ success: true, cart });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.resumeCartSession = resumeCartSession;
+// 11. POST /api/cart/batch-checkout
+const batchCheckoutCart = async (req, res) => {
+    try {
+        const { deviceId = 'CART_001', physicalWeight = 0, items = [] } = req.body;
+        const cartId = deviceId;
+        const cart = await fetchCartDoc(cartId);
+        // Map items array
+        const cartItems = [];
+        for (const uid of items) {
+            const template = exports.itemsDB[uid] || Object.values(exports.itemsDB).find(i => i.name === uid);
+            if (template) {
+                cartItems.push({
+                    uid,
+                    name: template.name,
+                    price: template.price,
+                    weight: template.weight
+                });
+            }
+        }
+        cart.items = cartItems;
+        cart.totalPrice = cart.items.reduce((sum, item) => sum + item.price, 0);
+        cart.totalWeight = cart.items.reduce((sum, item) => sum + item.weight, 0);
+        cart.remainingBudget = cart.budget - cart.totalPrice;
+        cart.physicalWeight = Number(physicalWeight);
+        // Weight tolerance check (<= 50g difference as per hardware spec)
+        const weightDifference = Math.abs(cart.totalWeight - cart.physicalWeight);
+        const weightMatch = weightDifference <= 50;
+        cart.weightMatch = weightMatch;
+        const checkoutStatus = weightMatch ? 'approved' : 'mismatch';
+        cart.checkout_status = checkoutStatus;
+        // Transition status to checkout
+        cart.status = 'checkout';
+        cart.lastUpdated = new Date().toISOString();
+        await (0, firebase_1.saveCartDoc)(cartId, cart);
+        (0, socketService_1.emitCartUpdate)(cartId, cart);
+        // Sync ESP32 connection state & checkout_status in RTDB
+        try {
+            const statusPayload = {
+                connected: true,
+                wifiStatus: 'Connected',
+                rssi: -50,
+                lastActive: new Date().toISOString(),
+                currentShoppingSession: cartId,
+                lastWeightReading: Number(physicalWeight),
+                lastRfidUid: items.length > 0 ? items[items.length - 1] : '',
+                checkout_status: checkoutStatus,
+                weightMatch,
+                weightDifference,
+                physicalWeight: Number(physicalWeight),
+                totalWeight: cart.totalWeight,
+                totalPrice: cart.totalPrice,
+                status: 'checkout',
+                timestamp: Date.now()
+            };
+            if (firebase_1.adminRtdb) {
+                await firebase_1.adminRtdb.ref(`kiosk_status/${cartId}`).update(statusPayload);
+            }
+            else if (firebase_1.rtdb) {
+                await (0, database_1.set)((0, database_1.ref)(firebase_1.rtdb, `kiosk_status/${cartId}`), statusPayload);
+            }
+            const { esp32Service } = require('../services/esp32Service');
+            await esp32Service.updateHeartbeat('Connected', -50, cartId, Number(physicalWeight));
+        }
+        catch (e) {
+            console.error('Failed to sync esp32Status in batchCheckout:', e);
+        }
+        res.status(200).json({
+            success: true,
+            approved: weightMatch,
+            checkout_status: checkoutStatus,
+            weightDifference,
+            cart
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.batchCheckoutCart = batchCheckoutCart;

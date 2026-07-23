@@ -96,6 +96,88 @@ export const getCart = async (req: Request, res: Response) => {
   }
 };
 
+// GET /api/product/:uid
+export const getProductByUid = async (req: Request, res: Response) => {
+  try {
+    const { uid } = req.params;
+    const cartId = 'CART_001';
+
+    if (!uid) {
+      return res.status(400).json({ success: false, error: 'Missing product UID parameter.' });
+    }
+
+    const itemTemplate = itemsDB[uid] || Object.values(itemsDB).find(i => i.name.toLowerCase() === uid.toLowerCase());
+
+    if (!itemTemplate) {
+      return res.status(404).json({ success: false, error: `Product with UID ${uid} not found.` });
+    }
+
+    const scanPayload = {
+      uid,
+      name: itemTemplate.name,
+      price: itemTemplate.price,
+      weight: itemTemplate.weight,
+      timestamp: Date.now(),
+      scanId: `${uid}_${Date.now()}`
+    };
+
+    // Simultaneously write this scan event to Firebase Realtime Database
+    try {
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}/last_scanned_item`).set(scanPayload);
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update({
+          lastRfidUid: uid,
+          lastScanTime: new Date().toLocaleTimeString(),
+          lastActive: new Date().toISOString(),
+          connected: true,
+          timestamp: Date.now()
+        });
+      } else if (rtdb) {
+        await set(ref(rtdb, `kiosk_status/${cartId}/last_scanned_item`), scanPayload);
+        await set(ref(rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
+      }
+    } catch (rtdbErr) {
+      console.error('Error writing last_scanned_item to RTDB:', rtdbErr);
+    }
+
+    // Also update cart document
+    try {
+      const cart = await fetchCartDoc(cartId);
+      const existingIndex = cart.items.findIndex(item => item.uid === uid);
+      if (existingIndex < 0) {
+        cart.items.push({
+          uid,
+          name: itemTemplate.name,
+          price: itemTemplate.price,
+          weight: itemTemplate.weight
+        });
+      }
+      cart.totalPrice = cart.items.reduce((sum, i) => sum + i.price, 0);
+      cart.totalWeight = cart.items.reduce((sum, i) => sum + i.weight, 0);
+      cart.remainingBudget = cart.budget - cart.totalPrice;
+      cart.lastUpdated = new Date().toISOString();
+      await saveCartDoc(cartId, cart);
+      emitCartUpdate(cartId, cart);
+    } catch (cartErr) {
+      console.error('Error updating cart doc on product fetch:', cartErr);
+    }
+
+    return res.status(200).json({
+      success: true,
+      product: {
+        uid,
+        name: itemTemplate.name,
+        price: itemTemplate.price,
+        weight: itemTemplate.weight
+      },
+      last_scanned_item: scanPayload
+    });
+  } catch (error: any) {
+    console.error('Error in getProductByUid:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // 2. POST /api/rfid/scan
 export const scanRfidCard = async (req: Request, res: Response) => {
   try {
@@ -110,14 +192,22 @@ export const scanRfidCard = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Item not found in database' });
     }
 
-    // In Batch Processing Mode, individual scans DO NOT update the active cart items.
-    // They are only registered in scan logs.
+    const scanPayload = {
+      uid,
+      name: itemTemplate.name,
+      price: itemTemplate.price,
+      weight: itemTemplate.weight,
+      timestamp: Date.now(),
+      scanId: `${uid}_${Date.now()}`
+    };
+
     try {
       const { esp32Service } = require('../services/esp32Service');
       await esp32Service.registerScan(uid);
       
-      // Update telemetry reading on kiosk_status/CART_001
+      // Update telemetry reading & last_scanned_item on kiosk_status/CART_001
       if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}/last_scanned_item`).set(scanPayload);
         await adminRtdb.ref(`kiosk_status/${cartId}`).update({
           lastRfidUid: uid,
           lastScanTime: new Date().toLocaleTimeString(),
@@ -127,6 +217,7 @@ export const scanRfidCard = async (req: Request, res: Response) => {
           timestamp: Date.now()
         });
       } else if (rtdb) {
+        await set(ref(rtdb, `kiosk_status/${cartId}/last_scanned_item`), scanPayload);
         await set(ref(rtdb, `kiosk_status/${cartId}/lastRfidUid`), uid);
         await set(ref(rtdb, `kiosk_status/${cartId}/lastScanTime`), new Date().toLocaleTimeString());
         await set(ref(rtdb, `kiosk_status/${cartId}/lastWeightReading`), Number(weight));
@@ -432,10 +523,13 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
     
     cart.physicalWeight = Number(physicalWeight);
     
-    // Exact or tolerance check (25g)
+    // Weight tolerance check (<= 50g difference as per hardware spec)
     const weightDifference = Math.abs(cart.totalWeight - cart.physicalWeight);
-    const weightMatch = weightDifference <= 25;
+    const weightMatch = weightDifference <= 50;
     cart.weightMatch = weightMatch;
+    
+    const checkoutStatus = weightMatch ? 'approved' : 'mismatch';
+    (cart as any).checkout_status = checkoutStatus;
     
     // Transition status to checkout
     cart.status = 'checkout';
@@ -444,7 +538,7 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
     await saveCartDoc(cartId, cart);
     emitCartUpdate(cartId, cart);
 
-    // Sync ESP32 connection state
+    // Sync ESP32 connection state & checkout_status in RTDB
     try {
       const statusPayload = {
         connected: true,
@@ -453,13 +547,21 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
         lastActive: new Date().toISOString(),
         currentShoppingSession: cartId,
         lastWeightReading: Number(physicalWeight),
-        lastRfidUid: items.length > 0 ? items[items.length - 1] : ''
+        lastRfidUid: items.length > 0 ? items[items.length - 1] : '',
+        checkout_status: checkoutStatus,
+        weightMatch,
+        weightDifference,
+        physicalWeight: Number(physicalWeight),
+        totalWeight: cart.totalWeight,
+        totalPrice: cart.totalPrice,
+        status: 'checkout',
+        timestamp: Date.now()
       };
-      if (rtdb) {
-        await set(ref(rtdb, `kiosk_status/${cartId}`), {
-          ...statusPayload,
-          timestamp: Date.now()
-        });
+
+      if (adminRtdb) {
+        await adminRtdb.ref(`kiosk_status/${cartId}`).update(statusPayload);
+      } else if (rtdb) {
+        await set(ref(rtdb, `kiosk_status/${cartId}`), statusPayload);
       }
       
       const { esp32Service } = require('../services/esp32Service');
@@ -468,7 +570,13 @@ export const batchCheckoutCart = async (req: Request, res: Response) => {
       console.error('Failed to sync esp32Status in batchCheckout:', e);
     }
 
-    res.status(200).json({ success: true, cart });
+    res.status(200).json({ 
+      success: true, 
+      approved: weightMatch,
+      checkout_status: checkoutStatus,
+      weightDifference,
+      cart 
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

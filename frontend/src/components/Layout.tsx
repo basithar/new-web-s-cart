@@ -11,7 +11,7 @@ const Layout: React.FC = () => {
   const { cart } = useCart();
   const { user } = useAuth();
   const { notifications, dismissNotification } = useSocket();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   return (
     <div className={`min-h-screen bg-theme-bg text-theme-text flex transition-colors duration-300 relative ${
@@ -22,12 +22,12 @@ const Layout: React.FC = () => {
 
       {/* Main Kiosk panel */}
       <div className={`flex-1 flex flex-col transition-all duration-300 ${
-        user ? (collapsed ? 'pl-20' : 'pl-64') : 'pl-0'
+        user ? (collapsed ? 'pl-0 md:pl-20' : 'pl-0 md:pl-64') : 'pl-0'
       }`}>
-        <Navbar collapsed={collapsed} />
+        <Navbar collapsed={collapsed} setCollapsed={setCollapsed} />
 
         {/* Main Content Area with compensating padding to prevent overlap with fixed navbar */}
-        <main className="flex-1 pt-36 sm:pt-28 px-6 pb-6 md:px-8 md:pb-8 bg-theme-bg text-theme-text">
+        <main className="flex-1 pt-28 sm:pt-24 px-3 sm:px-6 pb-6 md:px-8 md:pb-8 bg-theme-bg text-theme-text">
           {/* Dashboard Wrapper Container */}
           <div className="dashboard-container max-w-6xl mx-auto h-full relative z-auto">
             <Outlet />

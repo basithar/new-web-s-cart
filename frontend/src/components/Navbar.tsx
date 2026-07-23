@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Sun, Moon, Bell, Search, Cpu, LogOut, User, ShoppingCart, LogIn, Settings } from 'lucide-react';
+import { Sun, Moon, Bell, Search, Cpu, LogOut, User, ShoppingCart, LogIn, Settings, Menu } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,9 +8,10 @@ import { useSocket } from '../context/SocketContext';
 
 interface NavbarProps {
   collapsed: boolean;
+  setCollapsed?: (c: boolean | ((prev: boolean) => boolean)) => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
+const Navbar: React.FC<NavbarProps> = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
@@ -57,20 +58,32 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
   const cartItemCount = cart?.items?.reduce((acc, item) => acc + item.quantity, 0) || 0;
 
   return (
-    <header className={`h-32 sm:h-24 glass-panel border-b border-theme-border fixed top-0 right-0 z-[1000] flex flex-col sm:flex-row items-center justify-center sm:justify-between px-4 sm:px-6 md:px-8 py-2 sm:py-0 gap-2 sm:gap-0 transition-all duration-300 ${
-      user ? (collapsed ? 'left-20' : 'left-64') : 'left-0'
+    <header className={`h-24 sm:h-20 glass-panel border-b border-theme-border fixed top-0 right-0 z-[100] flex flex-col sm:flex-row items-center justify-center sm:justify-between px-3 sm:px-6 md:px-8 py-2 sm:py-0 gap-2 sm:gap-0 transition-all duration-300 ${
+      user ? (collapsed ? 'left-0 md:left-20' : 'left-0 md:left-64') : 'left-0'
     }`}>
       {/* Brand Logo & Controls wrapper for mobile layout */}
       <div className="flex items-center justify-between w-full sm:contents">
-        {/* Brand Logo (only visible to logged out guests, since sidebar is hidden) */}
-        {!user && (
+        
+        <div className="flex items-center gap-2">
+          {/* Mobile Hamburger Button when logged in */}
+          {user && setCollapsed && (
+            <button
+              onClick={() => setCollapsed((prev: boolean) => !prev)}
+              className="md:hidden p-2 rounded-xl bg-theme-bg border border-theme-border text-slate-500 hover:text-emerald-500 transition-colors shadow-sm"
+              title="Toggle Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Brand Logo */}
           <div className="flex items-center gap-2 cursor-pointer mr-2 shrink-0" onClick={() => navigate('/')}>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20">
               <ShoppingCart className="w-4 h-4 text-white" />
             </div>
-            <span className="font-extrabold text-xs text-theme-text hidden sm:inline tracking-tight">Smart Cart</span>
+            <span className="font-extrabold text-xs text-theme-text tracking-tight">Mr.B Smart Shopping Cart</span>
           </div>
-        )}
+        </div>
 
         {/* Responsive Desktop/Tablet Header Aligned Search Bar */}
         <div className="hidden sm:block relative w-full sm:max-w-[400px] lg:max-w-[500px] mx-1.5 sm:mx-4">

@@ -51,23 +51,23 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-theme-bg flex items-center justify-center relative overflow-hidden px-4 text-theme-text transition-colors duration-300">
+    <div className="min-h-screen bg-theme-bg flex items-center justify-center relative overflow-hidden px-3 sm:px-4 py-8 text-theme-text transition-colors duration-300">
       {/* Background blobs */}
-      <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl animate-pulse-slow"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div className="absolute top-1/4 left-1/4 w-60 sm:w-80 h-60 sm:h-80 bg-emerald-500/10 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-60 sm:w-80 h-60 sm:h-80 bg-teal-500/10 rounded-full blur-3xl animate-pulse-slow"></div>
 
-      <div className="w-full max-w-md relative z-10 space-y-6">
+      <div className="w-full max-w-md relative z-10 space-y-4 sm:space-y-6">
         {/* Logo Header */}
         <div className="text-center flex flex-col items-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-3">
-            <ShoppingCart className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-2 sm:mb-3">
+            <ShoppingCart className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Smart Cart Kiosk</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">Mr.B Smart Shopping Cart</h1>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Supermarket Shopping & Payment Portal</p>
         </div>
 
         {/* Auth Panel */}
-        <div className="glass-panel rounded-3xl p-8 shadow-xl space-y-5 text-left">
+        <div className="glass-panel rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl space-y-4 sm:space-y-5 text-left">
           {authMode !== 'forgot' && (
             <div className="flex border-b border-theme-border pb-1">
               <button

@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { 
   ShoppingBag, Trash2, Plus, Minus, Scale, Wallet, CreditCard,
-  ArrowRight, Radio, Search, Lock, Play, Square, CheckCircle, AlertTriangle, RefreshCw
+  ArrowRight, Radio, Search, Lock, Play, Square, CheckCircle, AlertTriangle, RefreshCw, X, ShieldAlert
 } from 'lucide-react';
 import { useCart, type CartData } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
+import { rtdb } from '../firebase';
+import { ref, onValue } from 'firebase/database';
 
 import { API_URL } from '../config';
 
@@ -37,15 +39,16 @@ const Shopping: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
-  const isStepCheckoutParam = queryParams.get('step') === 'checkout';
 
   const { 
-    cart, loading, updateItemQuantity,
+    cart, loading, updateItemQuantity, fetchCart,
     startShopping, stopShopping, resumeShopping, esp32Status
   } = useCart();
 
   // Heartbeat online check timestamp timer
   const [now, setNow] = useState(Date.now());
+  const [showMismatchModal, setShowMismatchModal] = useState(false);
+  const [lastScanId, setLastScanId] = useState<string>('');
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -54,12 +57,54 @@ const Shopping: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const { socket } = useSocket();
+  const { socket, triggerLocalNotification } = useSocket();
   const [checkoutStatus, setCheckoutStatus] = useState<string>('');
+
+  // 1. Firebase RTDB Listener for Real-Time Scanned Item from Hardware (GET /api/product/:uid or rfid scan)
+  useEffect(() => {
+    if (!rtdb) return;
+    const scannedItemRef = ref(rtdb, 'kiosk_status/CART_001/last_scanned_item');
+    const unsubscribe = onValue(scannedItemRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        if (val && val.scanId && val.scanId !== lastScanId) {
+          setLastScanId(val.scanId);
+          console.log('⚡ Real-time hardware item scan received via RTDB:', val);
+          triggerLocalNotification('success', 'Hardware Item Scanned', `Scanned: ${val.name} (Rs. ${val.price})`);
+          fetchCart();
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [lastScanId, fetchCart, triggerLocalNotification]);
+
+  // 2. Firebase RTDB Listener for Hardware-Triggered Checkout & Navigation
+  useEffect(() => {
+    if (!rtdb) return;
+    const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
+    const unsubscribe = onValue(kioskStatusRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        console.log('⚡ Hardware kiosk status update via RTDB:', val);
+
+        if (val.checkout_status === 'approved' || (val.status === 'checkout' && val.weightMatch === true)) {
+          console.log('✅ Hardware checkout approved! Immediately redirecting to /checkout portal...');
+          setShowMismatchModal(false);
+          navigate('/checkout');
+        } else if (val.checkout_status === 'mismatch' || (val.status === 'checkout' && val.weightMatch === false)) {
+          console.warn('🚨 Hardware checkout weight mismatch detected!');
+          setShowMismatchModal(true);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
 
   useEffect(() => {
     if (cart) {
-      if (cart.status === 'ready_for_payment') {
+      if (cart.status === 'ready_for_payment' || (cart as any).checkout_status === 'approved') {
         setCheckoutStatus('ready_for_payment');
       } else if (cart.status === 'weight_mismatch' || cart.weightMismatch) {
         setCheckoutStatus('weight_mismatch');
@@ -75,6 +120,11 @@ const Shopping: React.FC = () => {
     const handleCheckoutStatus = (data: { success: boolean; status: string }) => {
       console.log('⚡ Received checkout_status via Socket.IO:', data);
       setCheckoutStatus(data.status);
+      if (data.status === 'approved') {
+        navigate('/checkout');
+      } else if (data.status === 'mismatch' || data.status === 'weight_mismatch') {
+        setShowMismatchModal(true);
+      }
     };
 
     socket.on('checkout_status', handleCheckoutStatus);
@@ -82,7 +132,7 @@ const Shopping: React.FC = () => {
     return () => {
       socket.off('checkout_status', handleCheckoutStatus);
     };
-  }, [socket]);
+  }, [socket, navigate]);
 
   const [products, setProducts] = useState<any[]>([]);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -105,20 +155,18 @@ const Shopping: React.FC = () => {
     if (cart && cart.status === 'checkout' && cart.weightMatch) {
       const timer = setTimeout(() => {
         navigate('/checkout');
-      }, 3000);
+      }, 1500);
       return () => clearTimeout(timer);
     }
   }, [cart?.status, cart?.weightMatch, navigate]);
 
-
-
   if (loading && !cart) {
     return (
       <div className="space-y-6 text-theme-text">
-        <div className="h-20 skeleton-shimmer"></div>
+        <div className="h-20 skeleton-shimmer rounded-2xl"></div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 h-80 skeleton-shimmer"></div>
-          <div className="h-80 skeleton-shimmer"></div>
+          <div className="lg:col-span-2 h-80 skeleton-shimmer rounded-2xl"></div>
+          <div className="h-80 skeleton-shimmer rounded-2xl"></div>
         </div>
       </div>
     );
@@ -340,7 +388,7 @@ const Shopping: React.FC = () => {
                 </h4>
 
                 {items.length === 0 ? (
-                  <div className="p-10 text-center flex flex-col items-center">
+                  <div className="p-8 sm:p-10 text-center flex flex-col items-center">
                     <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-900 border border-theme-border flex items-center justify-center mb-3">
                       <ShoppingBag className="w-5 h-5 text-slate-400" />
                     </div>
@@ -350,14 +398,14 @@ const Shopping: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
+                  <div className="overflow-x-auto max-h-[380px] overflow-y-auto pr-1">
+                    <table className="w-full text-left border-collapse text-xs min-w-[450px]">
                       <thead>
-                        <tr className="border-b border-theme-border text-slate-400 font-bold uppercase tracking-wider">
-                          <th className="pb-3">Product</th>
-                          <th className="pb-3 text-center">Quantity</th>
-                          <th className="pb-3 text-right">Price</th>
-                          <th className="pb-3 text-right">Actions</th>
+                        <tr className="border-b border-theme-border text-slate-400 font-bold uppercase tracking-wider sticky top-0 bg-theme-card z-10">
+                          <th className="pb-3 pt-1">Product</th>
+                          <th className="pb-3 pt-1 text-center">Quantity</th>
+                          <th className="pb-3 pt-1 text-right">Price</th>
+                          <th className="pb-3 pt-1 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-theme-border/30">
@@ -369,10 +417,10 @@ const Shopping: React.FC = () => {
                                 <img 
                                   src={prod.imageUrl || getProductImage(prod.category)} 
                                   alt={prod.name} 
-                                  className="w-10 h-10 rounded-xl object-cover bg-slate-100 border border-theme-border shrink-0"
+                                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover bg-slate-100 border border-theme-border shrink-0"
                                 />
-                                <div>
-                                  <span className="font-bold text-theme-text">{prod.name}</span>
+                                <div className="min-w-0">
+                                  <span className="font-bold text-theme-text block truncate max-w-[150px] sm:max-w-none">{prod.name}</span>
                                   <span className="block text-[9px] text-slate-400 font-semibold uppercase">{prod.uid} ({prod.weight}g)</span>
                                 </div>
                               </td>
@@ -424,7 +472,7 @@ const Shopping: React.FC = () => {
 
                 {/* Mobile Payment Gateway / Checkout Trigger */}
                 {items.length > 0 && isStopped && (
-                  <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 p-5 rounded-3xl bg-slate-50 dark:bg-slate-900 border border-theme-border">
+                  <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 p-4 sm:p-5 rounded-3xl bg-slate-50 dark:bg-slate-900 border border-theme-border">
                     {checkoutStatus === 'ready_for_payment' ? (
                       <div className="text-left space-y-0.5">
                         <p className="text-xs text-slate-400">Total Price: <strong className="text-theme-text text-sm">Rs. {total.toLocaleString()}</strong></p>
@@ -451,8 +499,6 @@ const Shopping: React.FC = () => {
                 )}
               </>
           </div>
-
-
         </div>
 
         {/* Right Columns: Scanning methods & Catalog */}
@@ -492,10 +538,10 @@ const Shopping: React.FC = () => {
                     />
                     <div className="min-w-0 flex-1 flex justify-between items-center">
                       <div>
-                        <p className="font-bold text-theme-text truncate">{p.name}</p>
+                        <p className="font-bold text-theme-text truncate max-w-[120px] sm:max-w-[160px]">{p.name}</p>
                         <p className="text-[9px] text-slate-400 font-semibold font-mono">Rs. {p.price} • {p.weight}g</p>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[8px] font-mono text-slate-500 uppercase tracking-wide">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[8px] font-mono text-slate-500 uppercase tracking-wide shrink-0">
                         {p.uid}
                       </span>
                     </div>
@@ -536,6 +582,49 @@ const Shopping: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Weight Mismatch Warning Modal Dialog */}
+      {showMismatchModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[2000] flex items-center justify-center p-4">
+          <div className="glass-panel bg-theme-card border border-rose-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl animate-fade-in relative overflow-hidden">
+            <button
+              onClick={() => setShowMismatchModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-16 h-16 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto animate-bounce">
+              <ShieldAlert className="w-8 h-8 text-rose-500" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg sm:text-xl font-extrabold text-rose-500">Weight Mismatch Detected</h3>
+              <p className="text-xs text-slate-400 dark:text-slate-300 leading-relaxed font-semibold">
+                Weight mismatch detected. Please check cart items.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs font-mono space-y-1 text-left">
+              <div className="flex justify-between text-slate-400">
+                <span>Catalog Expected Weight:</span>
+                <span className="font-bold text-theme-text">{currentCart.expectedWeight || 0}g</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Scale Telemetry Reading:</span>
+                <span className="font-bold text-rose-500">{currentCart.physicalWeight || 0}g</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowMismatchModal(false)}
+              className="w-full py-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all"
+            >
+              Check Cart Items & Rescan
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

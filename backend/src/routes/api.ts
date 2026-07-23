@@ -10,7 +10,8 @@ import {
   updateCartBudget,
   updateCartItemQuantity,
   resumeCartSession,
-  batchCheckoutCart
+  batchCheckoutCart,
+  getProductByUid
 } from '../controllers/cartController';
 import { postHeartbeatLegacy, testScanLegacy } from '../controllers/esp32Controller';
 import { getScanHistory } from '../controllers/rfidController';
@@ -25,6 +26,10 @@ router.post('/cart/stop', stopShoppingSession);
 router.post('/esp32/heartbeat', postHeartbeat);
 router.post('/cart/pay', payCart);
 router.get('/cart/:cartId', getCart);
+
+// --- Hardware Product Scan Endpoint ---
+router.get('/product/:uid', getProductByUid);
+router.get('/rfid/:uid', getProductByUid);
 
 // --- Extra API Routes ---
 router.get('/rfid/history', getScanHistory);
