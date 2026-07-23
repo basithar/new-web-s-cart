@@ -339,8 +339,9 @@ export const stopShoppingSession = async (req: Request, res: Response) => {
 // 5. POST /api/esp32/heartbeat
 export const postHeartbeat = async (req: Request, res: Response) => {
   try {
-    const { cartId = 'CART_001', physicalWeight, weight = 0, budget = 3500, wifiStatus = 'Connected', rssi = -50 } = req.body;
+    const { cartId = 'CART_001', physicalWeight, weight = 0, budget = 3500, wifiStatus = 'Connected', rssi = -50, securityAlert } = req.body;
     const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : Number(weight);
+    const isSecurityAlert = securityAlert !== undefined ? Boolean(securityAlert) : false;
     const nowIso = new Date().toISOString();
 
     const cart = await fetchCartDoc(cartId);
@@ -362,6 +363,7 @@ export const postHeartbeat = async (req: Request, res: Response) => {
         lastActive: nowIso,
         physicalWeight: weightVal,
         lastWeightReading: weightVal,
+        securityAlert: isSecurityAlert,
         currentShoppingSession: cartId,
         timestamp: Date.now()
       };

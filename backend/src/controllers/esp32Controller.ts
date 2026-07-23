@@ -51,7 +51,7 @@ export const postHeartbeat = async (req: Request, res: Response) => {
 
 export const postHeartbeatLegacy = async (req: Request, res: Response) => {
   try {
-    const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget } = req.body;
+    const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget, securityAlert } = req.body;
     const nowIso = new Date().toISOString();
     const nowTime = Date.now();
 
@@ -110,6 +110,7 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
     const isOnline = status === 'online' || status === 'Connected';
     const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
     const budgetVal = budget !== undefined ? Number(budget) : undefined;
+    const isSecurityAlert = securityAlert !== undefined ? Boolean(securityAlert) : false;
 
     // 2. Update Firebase RTDB status under kiosk_status/CART_001
     const statusPayload: Record<string, any> = {
@@ -120,6 +121,7 @@ export const postHeartbeatLegacy = async (req: Request, res: Response) => {
       lastActive: nowIso,
       physicalWeight: weightVal,
       lastWeightReading: weightVal,
+      securityAlert: isSecurityAlert,
       currentShoppingSession: deviceId,
       timestamp: nowTime
     };

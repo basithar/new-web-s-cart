@@ -45,7 +45,7 @@ const postHeartbeat = async (req, res) => {
 exports.postHeartbeat = postHeartbeat;
 const postHeartbeatLegacy = async (req, res) => {
     try {
-        const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget } = req.body;
+        const { status = 'online', deviceId = 'CART_001', physicalWeight, weight, budget, securityAlert } = req.body;
         const nowIso = new Date().toISOString();
         const nowTime = Date.now();
         // 1. Check for Hardware-Triggered Reset ('D' button on ESP32 cart)
@@ -101,6 +101,7 @@ const postHeartbeatLegacy = async (req, res) => {
         const isOnline = status === 'online' || status === 'Connected';
         const weightVal = physicalWeight !== undefined ? Number(physicalWeight) : (weight !== undefined ? Number(weight) : 0);
         const budgetVal = budget !== undefined ? Number(budget) : undefined;
+        const isSecurityAlert = securityAlert !== undefined ? Boolean(securityAlert) : false;
         // 2. Update Firebase RTDB status under kiosk_status/CART_001
         const statusPayload = {
             connected: isOnline,
@@ -110,6 +111,7 @@ const postHeartbeatLegacy = async (req, res) => {
             lastActive: nowIso,
             physicalWeight: weightVal,
             lastWeightReading: weightVal,
+            securityAlert: isSecurityAlert,
             currentShoppingSession: deviceId,
             timestamp: nowTime
         };

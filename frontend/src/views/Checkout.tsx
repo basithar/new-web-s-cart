@@ -3,11 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   User, Mail, Phone, ShoppingBag, CreditCard, 
   Wallet, ShieldCheck, ArrowLeft, DollarSign,
-  Smartphone, AlertCircle, Loader2, CheckCircle2
+  Smartphone, AlertCircle, Loader2, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useSocket } from '../context/SocketContext';
 import { API_URL } from '../config';
+import { rtdb } from '../firebase';
+import { ref, onValue } from 'firebase/database';
 import axios from 'axios';
 
 const Checkout: React.FC = () => {
@@ -22,6 +24,32 @@ const Checkout: React.FC = () => {
   const passedTotal = stateCartData.totalSpent || 0;
   const passedWeight = stateCartData.expectedWeight || 0;
   const passedBudget = stateCartData.budget || 0;
+
+  // Real-Time Security Telemetry State
+  const [livePhysicalWeight, setLivePhysicalWeight] = useState<number | null>(null);
+  const [securityAlert, setSecurityAlert] = useState<boolean>(false);
+
+  // Firebase RTDB Listener for Live Security Telemetry on Checkout
+  useEffect(() => {
+    if (!rtdb) return;
+    const kioskStatusRef = ref(rtdb, 'kiosk_status/CART_001');
+    const unsubscribe = onValue(kioskStatusRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        if (val.physicalWeight !== undefined && val.physicalWeight !== null) {
+          setLivePhysicalWeight(Number(val.physicalWeight));
+        } else if (val.lastWeightReading !== undefined && val.lastWeightReading !== null) {
+          setLivePhysicalWeight(Number(val.lastWeightReading));
+        }
+
+        if (val.securityAlert !== undefined) {
+          setSecurityAlert(Boolean(val.securityAlert));
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Customer Form State
   const [customerName, setCustomerName] = useState('');
@@ -227,6 +255,11 @@ const Checkout: React.FC = () => {
   const budget = passedBudget > 0 ? passedBudget : (cart?.budget || 0);
   const remaining = budget - total;
 
+  // Real-time security calculation
+  const currentPhysicalWeight = livePhysicalWeight !== null ? livePhysicalWeight : (cart?.physicalWeight || 0);
+  const expectedWeight = passedWeight || cart?.expectedWeight || items.reduce((sum: number, i: any) => sum + (Number((i.product || i).weight || 0) * Number(i.quantity || 1)), 0);
+  const isWeightValid = !securityAlert && Math.abs(currentPhysicalWeight - expectedWeight) <= 50;
+
   if (items.length === 0) {
     return (
       <div className="max-w-md mx-auto text-center space-y-4 pt-12 text-theme-text">
@@ -255,6 +288,25 @@ const Checkout: React.FC = () => {
       >
         <ArrowLeft className="w-4 h-4" /> Return to Cart
       </button>
+
+      {/* Real-Time Security Alert Banner */}
+      {(!isWeightValid || securityAlert) && (
+        <div className="p-5 rounded-2xl bg-rose-500/15 border-2 border-rose-500 text-rose-500 font-extrabold text-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl animate-pulse">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-7 h-7 text-rose-500 shrink-0" />
+            <div>
+              <h4 className="font-extrabold uppercase tracking-wide text-xs">SECURITY ALERT: UNSCANNED ITEM DETECTED</h4>
+              <p className="text-xs font-semibold mt-0.5">SECURITY ALERT: Unscanned item detected! Please remove the item to proceed with payment.</p>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="px-3 py-1 rounded-full bg-rose-500 text-white text-[10px] uppercase font-bold tracking-widest inline-block">
+              Live Weight: {currentPhysicalWeight}g
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono mt-1 block">Expected: {expectedWeight}g</span>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
@@ -616,15 +668,15 @@ const Checkout: React.FC = () => {
 
               <div className="flex justify-between">
                 <span>Scale Telemetry:</span>
-                <span className={`font-extrabold ${cart?.weightMismatch ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
-                  {cart?.physicalWeight || 0}g
+                <span className={`font-extrabold ${!isWeightValid || securityAlert ? 'text-rose-500 font-extrabold animate-pulse' : 'text-theme-text'}`}>
+                  {currentPhysicalWeight}g
                 </span>
               </div>
 
               <div className="flex justify-between">
                 <span>Weight Verification:</span>
-                <span className={`font-extrabold uppercase ${cart?.weightMismatch ? 'text-rose-550' : 'text-emerald-500'}`}>
-                  {cart?.weightMismatch ? 'WEIGHT MISMATCH' : 'VERIFIED'}
+                <span className={`font-extrabold uppercase ${!isWeightValid || securityAlert ? 'text-rose-500 font-extrabold animate-pulse' : 'text-emerald-500'}`}>
+                  {!isWeightValid || securityAlert ? 'SECURITY ALERT' : 'VERIFIED'}
                 </span>
               </div>
 
@@ -642,14 +694,14 @@ const Checkout: React.FC = () => {
             {/* Pay Button */}
             <button
               onClick={handleSubmit}
-              disabled={cart?.weightMismatch}
+              disabled={!isWeightValid || securityAlert || isProcessing}
               className={`w-full py-4 rounded-2xl text-white font-bold text-xs uppercase tracking-wider shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
-                cart?.weightMismatch 
+                !isWeightValid || securityAlert 
                   ? 'bg-rose-500/40 cursor-not-allowed opacity-60' 
                   : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/10'
               }`}
             >
-              <CreditCard className="w-4 h-4" /> Pay Now (Rs. {total.toLocaleString()})
+              <CreditCard className="w-4 h-4" /> {!isWeightValid || securityAlert ? 'Payment Blocked (Remove Unscanned Item)' : `Pay Now (Rs. ${total.toLocaleString()})`}
             </button>
           </div>
 
